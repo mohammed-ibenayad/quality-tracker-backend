@@ -1,54 +1,104 @@
-// webhook-server.js - Enhanced version with .env support
-require('dotenv').config(); // Load environment variables from .env file
+// webhook-server.js - Complete production-ready version
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
 const server = createServer(app);
 
-// Enhanced CORS configuration with multiple origins support
-const allowedOrigins = [
-  "http://localhost:3000",      // Create React App default
-  "http://localhost:5173",      // Vite default
-  "http://127.0.0.1:3000",      // Alternative localhost format
-  "http://127.0.0.1:5173",      // Alternative localhost format
-  process.env.FRONTEND_URL,     // Environment variable
-  process.env.FRONTEND_URL_ALT  // Alternative frontend URL
-].filter(Boolean); // Remove undefined values
+// Environment detection
+const isProduction = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '127.0.0.1';
 
+// Enhanced CORS configuration for production
+const allowedOrigins = [
+  "http://localhost:3000",      // Development
+  "http://localhost:5173",      // Vite dev
+  "http://127.0.0.1:3000",      
+  "http://127.0.0.1:5173",      
+  "http://213.6.2.229",         // Your production server
+  "https://213.6.2.229",        // HTTPS version
+  process.env.FRONTEND_URL,     // Environment variable
+  process.env.FRONTEND_URL_ALT  
+].filter(Boolean);
+
+console.log('🌐 Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
 console.log('🌐 Allowed CORS origins:', allowedOrigins);
 
+// Socket.IO configuration optimized for production
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
+  },
+  // Production optimizations
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  maxHttpBufferSize: 1e6,
+  
+  // Path configuration for reverse proxy
+  path: '/socket.io/',
+  
+  // Compression
+  compression: true,
+  
+  // Connection state recovery
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true,
   }
 });
 
-// In-memory storage (use Redis/Database in production)
+// In-memory storage with cleanup
 const webhookResults = new Map();
 const processedWebhooks = new Set();
 
-// Middleware with enhanced CORS
-app.use(express.json({ limit: process.env.MAX_PAYLOAD_SIZE || '10mb' }));
+// Middleware configuration
+app.use(express.json({ 
+  limit: process.env.MAX_PAYLOAD_SIZE || '10mb'
+}));
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  maxAge: 86400 // Cache preflight requests for 24 hours
 }));
 
-// Serve static files for Quality Tracker frontend
-app.use(express.static('dist'));
+// Security middleware for production
+if (isProduction) {
+  // Trust proxy headers from Nginx
+  app.set('trust proxy', 1);
+  
+  // Security headers
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+}
 
-// Enhanced logging based on environment
-const isProduction = process.env.NODE_ENV === 'production';
+// Request logging
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${req.method} ${req.path} - ${req.ip}`);
+  next();
+});
+
+// Enhanced logging
 const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
 
 function log(level, message, data = null) {
@@ -109,9 +159,12 @@ function validateWebhookPayload(payload) {
   };
 }
 
-// Enhanced webhook processing with better error handling
+// Enhanced webhook processing
 async function processWebhookData(webhookData) {
-  log('info', '🔔 Processing webhook data', { requirementId: webhookData.requirementId });
+  log('info', '🔔 Processing webhook data', { 
+    requirementId: webhookData.requirementId,
+    resultCount: webhookData.results?.length || 0 
+  });
   
   // Validate webhook payload
   const validation = validateWebhookPayload(webhookData);
@@ -131,7 +184,7 @@ async function processWebhookData(webhookData) {
     };
   }
   
-  // Store webhook result with TTL if configured
+  // Store webhook result with TTL
   const resultKey = webhookData.requirementId;
   const resultData = {
     ...webhookData,
@@ -141,11 +194,9 @@ async function processWebhookData(webhookData) {
   };
   
   webhookResults.set(resultKey, resultData);
-  
-  // Mark as processed
   processedWebhooks.add(webhookId);
   
-  // Clean up old processed webhooks to prevent memory leak
+  // Memory cleanup
   if (processedWebhooks.size > (parseInt(process.env.MAX_PROCESSED_WEBHOOKS) || 1000)) {
     const webhooksArray = Array.from(processedWebhooks);
     const toRemove = webhooksArray.slice(0, webhooksArray.length - 500);
@@ -153,8 +204,8 @@ async function processWebhookData(webhookData) {
     log('debug', '🧹 Cleaned up old processed webhooks', { removed: toRemove.length });
   }
   
-  // Broadcast to connected Quality Tracker clients via WebSocket
-  log('debug', `📡 Broadcasting to clients for requirement: ${resultKey}`);
+  // Broadcast to connected clients
+  log('debug', `📡 Broadcasting to ${io.engine.clientsCount} connected clients`);
   
   const broadcastData = {
     requirementId: webhookData.requirementId,
@@ -170,14 +221,16 @@ async function processWebhookData(webhookData) {
   
   log('info', '✅ Webhook processed successfully', { 
     requirementId: webhookData.requirementId,
-    resultCount: webhookData.results?.length || 0
+    resultCount: webhookData.results?.length || 0,
+    connectedClients: io.engine.clientsCount
   });
   
   return {
     message: 'Webhook received and processed',
     requirementId: webhookData.requirementId,
     resultCount: webhookData.results?.length || 0,
-    webhookId
+    webhookId,
+    connectedClients: io.engine.clientsCount
   };
 }
 
@@ -198,10 +251,34 @@ function cleanupExpiredResults() {
   }
 }
 
-// Run cleanup every hour if TTL is configured
+// Run cleanup periodically
 if (process.env.RESULT_TTL) {
   setInterval(cleanupExpiredResults, parseInt(process.env.CLEANUP_INTERVAL) || 3600000);
 }
+
+// ===== API ROUTES =====
+
+// Health check with enhanced info
+app.get('/api/webhook/health', (req, res) => {
+  cleanupExpiredResults();
+  
+  const healthData = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    storedResults: webhookResults.size,
+    processedWebhooks: processedWebhooks.size,
+    connectedClients: io.engine.clientsCount,
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cors: {
+      allowedOrigins: allowedOrigins
+    }
+  };
+  
+  res.status(200).json(healthData);
+});
 
 // ===== WEBHOOK ENDPOINTS (GitHub Actions calls these) =====
 
@@ -226,29 +303,6 @@ app.post('/api/webhook/test-results', async (req, res) => {
       message: isProduction ? 'Internal server error' : error.message
     });
   }
-});
-
-/**
- * Enhanced webhook health check
- */
-app.get('/api/webhook/health', (req, res) => {
-  cleanupExpiredResults(); // Run cleanup on health check
-  
-  const healthData = {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    storedResults: webhookResults.size,
-    processedWebhooks: processedWebhooks.size,
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0',
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    cors: {
-      allowedOrigins: allowedOrigins
-    }
-  };
-  
-  res.status(200).json(healthData);
 });
 
 // ===== API ENDPOINTS (Quality Tracker calls these) =====
@@ -408,7 +462,9 @@ io.on('connection', (socket) => {
   });
   
   socket.on('ping', (callback) => {
-    callback('pong');
+    if (typeof callback === 'function') {
+      callback('pong');
+    }
   });
   
   socket.on('disconnect', (reason) => {
@@ -416,10 +472,32 @@ io.on('connection', (socket) => {
   });
 });
 
-// ===== STARTUP =====
+// ===== ERROR HANDLING =====
 
-const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || 'localhost';
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    error: 'API endpoint not found',
+    path: req.path,
+    method: req.method
+  });
+});
+
+// Global error handler
+app.use((error, req, res, next) => {
+  log('error', '💥 Unhandled error in Express', {
+    error: error.message,
+    stack: error.stack,
+    path: req.path
+  });
+  
+  res.status(500).json({
+    error: 'Internal server error',
+    message: isProduction ? 'Internal server error' : error.message
+  });
+});
+
+// ===== STARTUP =====
 
 server.listen(PORT, HOST, () => {
   log('info', `🚀 Quality Tracker Webhook Server running on ${HOST}:${PORT}`);
@@ -428,13 +506,15 @@ server.listen(PORT, HOST, () => {
   log('info', `🌐 Health check: http://${HOST}:${PORT}/api/webhook/health`);
   log('info', `📊 Results API: http://${HOST}:${PORT}/api/test-results`);
   log('info', `🌐 CORS origins: ${allowedOrigins.join(', ')}`);
+  log('info', `🔌 Connected clients: ${io.engine.clientsCount}`);
   
   if (!isProduction) {
     log('info', `🧪 Test webhook: curl -X POST http://${HOST}:${PORT}/api/test-webhook -H "Content-Type: application/json" -d '{"requirementId":"REQ-001"}'`);
   }
 });
 
-// Enhanced graceful shutdown
+// ===== GRACEFUL SHUTDOWN =====
+
 process.on('SIGINT', () => {
   log('info', '\n🛑 Shutting down webhook server...');
   

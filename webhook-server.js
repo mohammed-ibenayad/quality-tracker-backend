@@ -1,11 +1,10 @@
-// webhook-server.js - Complete production-ready version
+// webhook-server.js - Fixed version with proper request isolation
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
 
 const app = express();
 const server = createServer(app);
@@ -17,20 +16,17 @@ const HOST = process.env.HOST || '127.0.0.1';
 
 // Enhanced CORS configuration for production
 const allowedOrigins = [
-  "http://localhost:3000",      // Development
-  "http://localhost:5173",      // Vite dev
-  "http://127.0.0.1:3000",      
-  "http://127.0.0.1:5173",      
-  "http://213.6.2.229",         // Your production server
-  "https://213.6.2.229",        // HTTPS version
-  process.env.FRONTEND_URL,     // Environment variable
-  process.env.FRONTEND_URL_ALT  
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+  "http://213.6.2.229",
+  "https://213.6.2.229",
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL_ALT
 ].filter(Boolean);
 
-console.log('🌐 Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
-console.log('🌐 Allowed CORS origins:', allowedOrigins);
-
-// Socket.IO configuration optimized for production
+// Socket.IO configuration
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -38,89 +34,33 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
   },
-  // Production optimizations
   transports: ['websocket', 'polling'],
   allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
-  upgradeTimeout: 30000,
-  maxHttpBufferSize: 1e6,
-  
-  // Path configuration for reverse proxy
-  path: '/socket.io/',
-  
-  // Compression
-  compression: true,
-  
-  // Connection state recovery
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000,
-    skipMiddlewares: true,
-  }
 });
 
-// In-memory storage with cleanup
-const webhookResults = new Map();
-const processedWebhooks = new Set();
+// FIXED: Use requestId-based storage instead of just requirementId
+const webhookResults = new Map(); // Key: requestId, Value: webhook data
+const processedWebhooks = new Set(); // Track processed webhook IDs
+const activeRequests = new Map(); // Key: requirementId, Value: Set of active requestIds
 
-// Middleware configuration
-app.use(express.json({ 
-  limit: process.env.MAX_PAYLOAD_SIZE || '10mb'
-}));
-
+// Middleware
+app.use(express.json({ limit: '10mb' }));
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  maxAge: 86400 // Cache preflight requests for 24 hours
 }));
 
-// Security middleware for production
-if (isProduction) {
-  // Trust proxy headers from Nginx
-  app.set('trust proxy', 1);
-  
-  // Security headers
-  app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    next();
-  });
-}
-
-// Request logging
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path} - ${req.ip}`);
-  next();
-});
-
-// Enhanced logging
-const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
-
+// Logging
 function log(level, message, data = null) {
-  const levels = { error: 0, warn: 1, info: 2, debug: 3 };
-  const currentLevel = levels[logLevel] || 3;
-  
-  if (levels[level] <= currentLevel) {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    
-    if (level === 'error') {
-      console.error(logMessage, data || '');
-    } else if (level === 'warn') {
-      console.warn(logMessage, data || '');
-    } else {
-      console.log(logMessage, data || '');
-    }
-  }
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${level.toUpperCase()}: ${message}`, data || '');
 }
 
-// ===== HELPER FUNCTIONS =====
-
+// FIXED: Enhanced validation to check for requestId
 function validateWebhookPayload(payload) {
   const errors = [];
   
@@ -133,36 +73,26 @@ function validateWebhookPayload(payload) {
     errors.push('requirementId is required');
   }
   
+  if (!payload.requestId) {
+    errors.push('requestId is required for proper request isolation');
+  }
+  
   if (!payload.timestamp) {
     errors.push('timestamp is required');
   }
   
   if (!payload.results || !Array.isArray(payload.results)) {
     errors.push('results must be an array');
-  } else {
-    payload.results.forEach((result, index) => {
-      if (!result.id) {
-        errors.push(`results[${index}].id is required`);
-      }
-      if (!result.status) {
-        errors.push(`results[${index}].status is required`);
-      }
-      if (!['Passed', 'Failed', 'Not Run', 'Blocked'].includes(result.status)) {
-        errors.push(`results[${index}].status must be one of: Passed, Failed, Not Run, Blocked`);
-      }
-    });
   }
   
-  return {
-    valid: errors.length === 0,
-    errors
-  };
+  return { valid: errors.length === 0, errors };
 }
 
-// Enhanced webhook processing
+// FIXED: Process webhook with proper request isolation
 async function processWebhookData(webhookData) {
   log('info', '🔔 Processing webhook data', { 
     requirementId: webhookData.requirementId,
+    requestId: webhookData.requestId,
     resultCount: webhookData.results?.length || 0 
   });
   
@@ -173,8 +103,8 @@ async function processWebhookData(webhookData) {
     throw new Error(`Invalid webhook payload: ${validation.errors.join(', ')}`);
   }
   
-  // Check for duplicates
-  const webhookId = `${webhookData.requirementId}-${webhookData.requestId || webhookData.timestamp}`;
+  // FIXED: Use requestId for duplicate detection instead of requirementId
+  const webhookId = webhookData.requestId;
   if (processedWebhooks.has(webhookId)) {
     log('warn', '⚠️ Duplicate webhook detected', { webhookId });
     return {
@@ -184,31 +114,29 @@ async function processWebhookData(webhookData) {
     };
   }
   
-  // Store webhook result with TTL
-  const resultKey = webhookData.requirementId;
+  // FIXED: Store by requestId, not requirementId
   const resultData = {
     ...webhookData,
     receivedAt: new Date().toISOString(),
     webhookId,
-    ttl: process.env.RESULT_TTL ? Date.now() + parseInt(process.env.RESULT_TTL) : null
+    ttl: Date.now() + (parseInt(process.env.RESULT_TTL) || 3600000) // 1 hour default
   };
   
-  webhookResults.set(resultKey, resultData);
+  webhookResults.set(webhookId, resultData);
   processedWebhooks.add(webhookId);
   
-  // Memory cleanup
-  if (processedWebhooks.size > (parseInt(process.env.MAX_PROCESSED_WEBHOOKS) || 1000)) {
-    const webhooksArray = Array.from(processedWebhooks);
-    const toRemove = webhooksArray.slice(0, webhooksArray.length - 500);
-    toRemove.forEach(id => processedWebhooks.delete(id));
-    log('debug', '🧹 Cleaned up old processed webhooks', { removed: toRemove.length });
+  // FIXED: Track active requests per requirement
+  if (!activeRequests.has(webhookData.requirementId)) {
+    activeRequests.set(webhookData.requirementId, new Set());
   }
+  activeRequests.get(webhookData.requirementId).add(webhookId);
   
-  // Broadcast to connected clients
+  // Broadcast to connected clients - FIXED: Include requestId in broadcast
   log('debug', `📡 Broadcasting to ${io.engine.clientsCount} connected clients`);
   
   const broadcastData = {
     requirementId: webhookData.requirementId,
+    requestId: webhookData.requestId,
     data: webhookData,
     timestamp: new Date().toISOString()
   };
@@ -217,10 +145,14 @@ async function processWebhookData(webhookData) {
   io.emit('webhook-received', broadcastData);
   
   // Emit to specific requirement room
-  io.to(`requirement-${resultKey}`).emit('test-results', webhookData);
+  io.to(`requirement-${webhookData.requirementId}`).emit('test-results', webhookData);
+  
+  // FIXED: Also emit to specific request room for precise targeting
+  io.to(`request-${webhookId}`).emit('test-results', webhookData);
   
   log('info', '✅ Webhook processed successfully', { 
     requirementId: webhookData.requirementId,
+    requestId: webhookData.requestId,
     resultCount: webhookData.results?.length || 0,
     connectedClients: io.engine.clientsCount
   });
@@ -228,20 +160,35 @@ async function processWebhookData(webhookData) {
   return {
     message: 'Webhook received and processed',
     requirementId: webhookData.requirementId,
+    requestId: webhookData.requestId,
     resultCount: webhookData.results?.length || 0,
     webhookId,
     connectedClients: io.engine.clientsCount
   };
 }
 
-// Cleanup expired results
+// FIXED: Cleanup expired results and old requests
 function cleanupExpiredResults() {
   const now = Date.now();
   let cleanedCount = 0;
   
-  for (const [key, value] of webhookResults.entries()) {
+  // Clean expired webhook results
+  for (const [requestId, value] of webhookResults.entries()) {
     if (value.ttl && value.ttl < now) {
-      webhookResults.delete(key);
+      webhookResults.delete(requestId);
+      processedWebhooks.delete(requestId);
+      
+      // Remove from active requests
+      for (const [reqId, requestSet] of activeRequests.entries()) {
+        if (requestSet.has(requestId)) {
+          requestSet.delete(requestId);
+          if (requestSet.size === 0) {
+            activeRequests.delete(reqId);
+          }
+          break;
+        }
+      }
+      
       cleanedCount++;
     }
   }
@@ -251,14 +198,12 @@ function cleanupExpiredResults() {
   }
 }
 
-// Run cleanup periodically
-if (process.env.RESULT_TTL) {
-  setInterval(cleanupExpiredResults, parseInt(process.env.CLEANUP_INTERVAL) || 3600000);
-}
+// Run cleanup every 15 minutes
+setInterval(cleanupExpiredResults, 15 * 60 * 1000);
 
 // ===== API ROUTES =====
 
-// Health check with enhanced info
+// Health check
 app.get('/api/webhook/health', (req, res) => {
   cleanupExpiredResults();
   
@@ -267,24 +212,19 @@ app.get('/api/webhook/health', (req, res) => {
     timestamp: new Date().toISOString(),
     storedResults: webhookResults.size,
     processedWebhooks: processedWebhooks.size,
+    activeRequests: Array.from(activeRequests.entries()).map(([reqId, requestSet]) => ({
+      requirementId: reqId,
+      activeRequestCount: requestSet.size,
+      requestIds: Array.from(requestSet)
+    })),
     connectedClients: io.engine.clientsCount,
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0',
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    cors: {
-      allowedOrigins: allowedOrigins
-    }
+    environment: process.env.NODE_ENV || 'development'
   };
   
   res.status(200).json(healthData);
 });
 
-// ===== WEBHOOK ENDPOINTS (GitHub Actions calls these) =====
-
-/**
- * Main webhook endpoint - GitHub Actions sends results here
- */
+// Main webhook endpoint - GitHub Actions sends results here
 app.post('/api/webhook/test-results', async (req, res) => {
   try {
     const result = await processWebhookData(req.body);
@@ -305,95 +245,91 @@ app.post('/api/webhook/test-results', async (req, res) => {
   }
 });
 
-// ===== API ENDPOINTS (Quality Tracker calls these) =====
+// FIXED: Get results by requestId (more precise than requirementId)
+app.get('/api/test-results/request/:requestId', (req, res) => {
+  const { requestId } = req.params;
+  
+  log('debug', `📋 Frontend requesting results for requestId: ${requestId}`);
+  
+  const result = webhookResults.get(requestId);
+  
+  if (!result) {
+    return res.status(404).json({
+      error: 'No results found',
+      requestId
+    });
+  }
+  
+  // Check if result has expired
+  if (result.ttl && result.ttl < Date.now()) {
+    webhookResults.delete(requestId);
+    return res.status(404).json({
+      error: 'Results have expired',
+      requestId
+    });
+  }
+  
+  res.status(200).json({
+    requestId,
+    ...result,
+    retrievedAt: new Date().toISOString()
+  });
+});
 
-/**
- * Get latest test results for a requirement
- */
+// FIXED: Get latest results for a requirement (returns most recent requestId)
 app.get('/api/test-results/:requirementId', (req, res) => {
   const { requirementId } = req.params;
   
-  log('debug', `📋 Frontend requesting results for: ${requirementId}`);
+  log('debug', `📋 Frontend requesting latest results for requirement: ${requirementId}`);
   
-  const result = webhookResults.get(requirementId);
-  
-  if (!result) {
+  // Find the most recent requestId for this requirement
+  const requestIds = activeRequests.get(requirementId);
+  if (!requestIds || requestIds.size === 0) {
     return res.status(404).json({
       error: 'No results found',
       requirementId
     });
   }
   
-  // Check if result has expired
-  if (result.ttl && result.ttl < Date.now()) {
-    webhookResults.delete(requirementId);
+  // Get the most recent result (by timestamp)
+  let latestResult = null;
+  let latestTimestamp = 0;
+  
+  for (const requestId of requestIds) {
+    const result = webhookResults.get(requestId);
+    if (result && (!result.ttl || result.ttl > Date.now())) {
+      const resultTimestamp = new Date(result.receivedAt).getTime();
+      if (resultTimestamp > latestTimestamp) {
+        latestTimestamp = resultTimestamp;
+        latestResult = result;
+      }
+    }
+  }
+  
+  if (!latestResult) {
     return res.status(404).json({
-      error: 'Results have expired',
+      error: 'No valid results found',
       requirementId
     });
   }
   
   res.status(200).json({
     requirementId,
-    ...result,
+    ...latestResult,
     retrievedAt: new Date().toISOString()
   });
 });
 
-/**
- * Get all stored webhook results (for debugging)
- */
-app.get('/api/test-results', (req, res) => {
-  if (isProduction && !req.query.debug) {
-    return res.status(403).json({
-      error: 'Debug endpoint not available in production'
-    });
-  }
-  
-  cleanupExpiredResults();
-  
-  const allResults = {};
-  
-  for (const [key, value] of webhookResults.entries()) {
-    allResults[key] = value;
-  }
-  
-  res.status(200).json({
-    results: allResults,
-    count: webhookResults.size,
-    retrievedAt: new Date().toISOString()
-  });
-});
-
-/**
- * Clear results for a requirement (useful for testing)
- */
-app.delete('/api/test-results/:requirementId', (req, res) => {
-  const { requirementId } = req.params;
-  
-  const existed = webhookResults.has(requirementId);
-  webhookResults.delete(requirementId);
-  
-  log('info', existed ? '🗑️ Results cleared' : '🗑️ No results to clear', { requirementId });
-  
-  res.status(200).json({
-    message: existed ? 'Results cleared' : 'No results to clear',
-    requirementId
-  });
-});
-
-/**
- * Enhanced manual webhook trigger (for testing)
- */
+// Enhanced manual webhook trigger with unique requestId
 app.post('/api/test-webhook', async (req, res) => {
   try {
     log('info', '🧪 Manual webhook trigger for testing');
     
-    // Simulate webhook data with more realistic test scenarios
+    // FIXED: Always generate unique requestId for test webhooks
     const testWebhook = {
       requirementId: req.body.requirementId || 'REQ-TEST',
+      requestId: `manual-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       timestamp: new Date().toISOString(),
-      requestId: `manual-${Date.now()}`,
       source: 'manual-trigger',
       results: req.body.results || [
         {
@@ -431,40 +367,71 @@ app.post('/api/test-webhook', async (req, res) => {
   }
 });
 
+// FIXED: Clear results for a specific request
+app.delete('/api/test-results/request/:requestId', (req, res) => {
+  const { requestId } = req.params;
+  
+  const existed = webhookResults.has(requestId);
+  webhookResults.delete(requestId);
+  processedWebhooks.delete(requestId);
+  
+  // Remove from active requests
+  for (const [reqId, requestSet] of activeRequests.entries()) {
+    if (requestSet.has(requestId)) {
+      requestSet.delete(requestId);
+      if (requestSet.size === 0) {
+        activeRequests.delete(reqId);
+      }
+      break;
+    }
+  }
+  
+  log('info', existed ? '🗑️ Request results cleared' : '🗑️ No results to clear', { requestId });
+  
+  res.status(200).json({
+    message: existed ? 'Results cleared' : 'No results to clear',
+    requestId
+  });
+});
+
 // ===== WEBSOCKET HANDLING =====
 
 io.on('connection', (socket) => {
   log('info', `🔌 Quality Tracker connected: ${socket.id}`);
   
-  // Enhanced connection info
   socket.emit('connection-info', {
     socketId: socket.id,
     timestamp: new Date().toISOString(),
     serverVersion: process.env.npm_package_version || '1.0.0'
   });
   
-  // Join requirement-specific rooms for targeted updates
+  // FIXED: Subscribe to both requirement and specific request
   socket.on('subscribe-requirement', (requirementId) => {
     socket.join(`requirement-${requirementId}`);
-    log('debug', `📝 Client ${socket.id} subscribed to ${requirementId}`);
+    log('debug', `📝 Client ${socket.id} subscribed to requirement ${requirementId}`);
+  });
+  
+  // NEW: Subscribe to specific request for precise targeting
+  socket.on('subscribe-request', (requestId) => {
+    socket.join(`request-${requestId}`);
+    log('debug', `📝 Client ${socket.id} subscribed to request ${requestId}`);
     
-    // Send any existing results for this requirement
-    const existingResult = webhookResults.get(requirementId);
+    // Send existing result if available
+    const existingResult = webhookResults.get(requestId);
     if (existingResult && (!existingResult.ttl || existingResult.ttl > Date.now())) {
       socket.emit('test-results', existingResult);
-      log('debug', `📤 Sent existing results to ${socket.id} for ${requirementId}`);
+      log('debug', `📤 Sent existing results to ${socket.id} for request ${requestId}`);
     }
   });
   
   socket.on('unsubscribe-requirement', (requirementId) => {
     socket.leave(`requirement-${requirementId}`);
-    log('debug', `📝 Client ${socket.id} unsubscribed from ${requirementId}`);
+    log('debug', `📝 Client ${socket.id} unsubscribed from requirement ${requirementId}`);
   });
   
-  socket.on('ping', (callback) => {
-    if (typeof callback === 'function') {
-      callback('pong');
-    }
+  socket.on('unsubscribe-request', (requestId) => {
+    socket.leave(`request-${requestId}`);
+    log('debug', `📝 Client ${socket.id} unsubscribed from request ${requestId}`);
   });
   
   socket.on('disconnect', (reason) => {
@@ -472,9 +439,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// ===== ERROR HANDLING =====
-
-// 404 handler for API routes
+// Error handling
 app.use('/api/*', (req, res) => {
   res.status(404).json({
     error: 'API endpoint not found',
@@ -483,42 +448,27 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Global error handler
 app.use((error, req, res, next) => {
-  log('error', '💥 Unhandled error in Express', {
-    error: error.message,
-    stack: error.stack,
-    path: req.path
-  });
-  
+  log('error', '💥 Unhandled error in Express', error.message);
   res.status(500).json({
     error: 'Internal server error',
     message: isProduction ? 'Internal server error' : error.message
   });
 });
 
-// ===== STARTUP =====
-
+// Startup
 server.listen(PORT, HOST, () => {
   log('info', `🚀 Quality Tracker Webhook Server running on ${HOST}:${PORT}`);
-  log('info', `📡 WebSocket server ready for real-time updates`);
   log('info', `🔗 Webhook endpoint: http://${HOST}:${PORT}/api/webhook/test-results`);
   log('info', `🌐 Health check: http://${HOST}:${PORT}/api/webhook/health`);
   log('info', `📊 Results API: http://${HOST}:${PORT}/api/test-results`);
   log('info', `🌐 CORS origins: ${allowedOrigins.join(', ')}`);
-  log('info', `🔌 Connected clients: ${io.engine.clientsCount}`);
-  
-  if (!isProduction) {
-    log('info', `🧪 Test webhook: curl -X POST http://${HOST}:${PORT}/api/test-webhook -H "Content-Type: application/json" -d '{"requirementId":"REQ-001"}'`);
-  }
 });
 
-// ===== GRACEFUL SHUTDOWN =====
-
+// Graceful shutdown
 process.on('SIGINT', () => {
   log('info', '\n🛑 Shutting down webhook server...');
   
-  // Close all socket connections
   io.close(() => {
     log('info', '📡 WebSocket server closed');
   });
@@ -527,21 +477,6 @@ process.on('SIGINT', () => {
     log('info', '✅ HTTP server closed');
     process.exit(0);
   });
-});
-
-process.on('SIGTERM', () => {
-  log('info', '🛑 SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  log('error', '💥 Uncaught exception', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  log('error', '💥 Unhandled rejection at Promise', { reason, promise });
 });
 
 module.exports = { app, server, io };

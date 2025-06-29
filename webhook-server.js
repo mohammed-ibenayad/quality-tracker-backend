@@ -104,23 +104,23 @@ async function processWebhookData(webhookData) {
   }
   
   // SIMPLE FIX: Skip duplicate detection for incremental updates
-const webhookId = webhookData.requestId;
-const hasRunningTests = webhookData.results?.some(r => r.status === 'Running' || r.status === 'Passed' || r.status === 'Failed');
+  const webhookId = webhookData.requestId;
+  const hasRunningTests = webhookData.results?.some(r => r.status === 'Running' || r.status === 'Passed' || r.status === 'Failed');
 
-if (processedWebhooks.has(webhookId) && !hasRunningTests) {
-  log('warn', '⚠️ Duplicate webhook detected', { webhookId });
-  return {
-    message: 'Webhook already processed',
-    webhookId,
-    duplicate: true
-  };
-}
+  if (processedWebhooks.has(webhookId) && !hasRunningTests) {
+    log('warn', '⚠️ Duplicate webhook detected', { webhookId });
+    return {
+      message: 'Webhook already processed',
+      webhookId,
+      duplicate: true
+    };
+  }
 
-// Allow incremental updates - don't add to processed set until all tests complete
-const allTestsComplete = webhookData.results?.every(r => r.status === 'Passed' || r.status === 'Failed');
-if (allTestsComplete) {
-  processedWebhooks.add(webhookId);
-}
+  // Allow incremental updates - don't add to processed set until all tests complete
+  const allTestsComplete = webhookData.results?.every(r => r.status === 'Passed' || r.status === 'Failed');
+  if (allTestsComplete) {
+    processedWebhooks.add(webhookId);
+  }
   
   // FIXED: Store by requestId, not requirementId
   const resultData = {
@@ -131,7 +131,6 @@ if (allTestsComplete) {
   };
   
   webhookResults.set(webhookId, resultData);
-  processedWebhooks.add(webhookId);
   
   // FIXED: Track active requests per requirement
   if (!activeRequests.has(webhookData.requirementId)) {

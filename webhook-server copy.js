@@ -103,24 +103,16 @@ async function processWebhookData(webhookData) {
     throw new Error(`Invalid webhook payload: ${validation.errors.join(', ')}`);
   }
   
-  // SIMPLE FIX: Skip duplicate detection for incremental updates
-const webhookId = webhookData.requestId;
-const hasRunningTests = webhookData.results?.some(r => r.status === 'Running' || r.status === 'Passed' || r.status === 'Failed');
-
-if (processedWebhooks.has(webhookId) && !hasRunningTests) {
-  log('warn', '⚠️ Duplicate webhook detected', { webhookId });
-  return {
-    message: 'Webhook already processed',
-    webhookId,
-    duplicate: true
-  };
-}
-
-// Allow incremental updates - don't add to processed set until all tests complete
-const allTestsComplete = webhookData.results?.every(r => r.status === 'Passed' || r.status === 'Failed');
-if (allTestsComplete) {
-  processedWebhooks.add(webhookId);
-}
+  // FIXED: Use requestId for duplicate detection instead of requirementId
+  const webhookId = webhookData.requestId;
+  if (processedWebhooks.has(webhookId)) {
+    log('warn', '⚠️ Duplicate webhook detected', { webhookId });
+    return {
+      message: 'Webhook already processed',
+      webhookId,
+      duplicate: true
+    };
+  }
   
   // FIXED: Store by requestId, not requirementId
   const resultData = {

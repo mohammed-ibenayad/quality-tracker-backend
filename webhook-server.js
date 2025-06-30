@@ -95,6 +95,8 @@ async function processWebhookData(webhookData) {
     requestId: webhookData.requestId,
     resultCount: webhookData.results?.length || 0 
   });
+
+  console.log('🔍 WEBHOOK RESULTS:', JSON.stringify(webhookData.results?.map(r => ({id: r.id, status: r.status})) || [], null, 2));
   
   // Validate webhook payload
   const validation = validateWebhookPayload(webhookData);

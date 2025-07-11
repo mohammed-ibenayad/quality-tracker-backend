@@ -209,9 +209,8 @@ app.post('/api/webhook/test-results', async (req, res) => {
       source: req.get('X-Request-ID') || 'unknown'
     });
 
-    // Added this line to log the entire incoming payload for inspection
-    // Keeping this as 'debug' for detailed inspection, will only show if debug logs are enabled.
-    log('debug', 'Full incoming webhook payload:', JSON.stringify(webhookData, null, 2));
+    // MODIFIED: Changed log level from 'debug' to 'info' for the full incoming webhook payload
+    log('info', 'Full incoming webhook payload:', JSON.stringify(webhookData, null, 2));
 
     const result = await processWebhookData(webhookData);
 

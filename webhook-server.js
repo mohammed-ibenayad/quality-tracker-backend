@@ -56,9 +56,9 @@ app.use(cors({
 // Logging
 function log(level, message, data = null) {
   const timestamp = new Date().toISOString();
-  // Only log debug messages if not in production or if explicitly enabled
-  if (level === 'debug' && isProduction) {
-      return; // Skip debug logs in production
+  // Only log debug messages if not in production or if explicitly enabled via LOG_LEVEL
+  if (level === 'debug' && isProduction && process.env.LOG_LEVEL !== 'debug') {
+      return; // Skip debug logs in production unless LOG_LEVEL is 'debug'
   }
   console.log(`[${timestamp}] ${level.toUpperCase()}: ${message}`, data || '');
 }
@@ -110,11 +110,11 @@ async function processWebhookData(webhookData) {
   const testCaseId = testCase.id;
   const compositeKey = `${webhookData.requestId}-${testCaseId}`;
 
-  // Add this block to log the failure object if it exists
+  // Changed log level from 'debug' to 'info' for the failure object
   if (testCase.failure) {
-    log('debug', `🚨 Failure object received for test case ${testCaseId}:`, JSON.stringify(testCase.failure, null, 2));
+    log('info', `🚨 Failure object received for test case ${testCaseId}:`, JSON.stringify(testCase.failure, null, 2));
   } else {
-    log('debug', `✅ No failure object for test case ${testCaseId}. Status: ${testCase.status}`);
+    log('info', `✅ No detailed failure object for test case ${testCaseId}. Status: ${testCase.status}`);
   }
 
   // Track request execution
@@ -209,7 +209,8 @@ app.post('/api/webhook/test-results', async (req, res) => {
       source: req.get('X-Request-ID') || 'unknown'
     });
 
-    // Add this line to log the entire incoming payload for inspection
+    // Added this line to log the entire incoming payload for inspection
+    // Keeping this as 'debug' for detailed inspection, will only show if debug logs are enabled.
     log('debug', 'Full incoming webhook payload:', JSON.stringify(webhookData, null, 2));
 
     const result = await processWebhookData(webhookData);
@@ -249,11 +250,11 @@ app.get('/api/test-results/request/:requestId/testcase/:testCaseId', (req, res) 
     });
   }
 
-  // Add this line to log the retrieved testCase, including the failure object if present
+  // Changed log level from 'debug' to 'info' for the retrieved failure object
   if (result.testCase && result.testCase.failure) {
-    log('debug', `Retrieved test case ${testCaseId} contains failure:`, JSON.stringify(result.testCase.failure, null, 2));
+    log('info', `Retrieved test case ${testCaseId} contains failure:`, JSON.stringify(result.testCase.failure, null, 2));
   } else if (result.testCase) {
-     log('debug', `Retrieved test case ${testCaseId}. Status: ${result.testCase.status}`);
+     log('info', `Retrieved test case ${testCaseId}. Status: ${result.testCase.status}`);
   }
 
   // Check if result has expired

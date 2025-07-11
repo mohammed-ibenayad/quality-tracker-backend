@@ -91,7 +91,7 @@ function validateWebhookPayload(payload) {
   return { valid: errors.length === 0, errors };
 }
 
-// MODIFIED: Process webhook for individual test case
+// ENHANCED: Process webhook for individual test case with improved duplicate detection
 async function processWebhookData(webhookData) {
   log('info', '🔔 Processing test case webhook', {
     requestId: webhookData.requestId,
@@ -128,8 +128,19 @@ async function processWebhookData(webhookData) {
   const execution = requestExecutions.get(webhookData.requestId);
   execution.testCaseIds.add(testCaseId);
 
-  // Check for duplicate processing (allow incremental updates)
-  const isDuplicate = processedWebhooks.has(`${compositeKey}-${testCase.status}`);
+  // ENHANCED: Improved duplicate detection to allow enhanced updates
+  const statusKey = `${compositeKey}-${testCase.status}`;
+  const existingResult = testCaseResults.get(compositeKey);
+  
+  // Check if this is an enhanced update (same status but now with failure object)
+  const isEnhancedUpdate = existingResult && 
+    existingResult.testCase.status === testCase.status &&
+    !existingResult.testCase.failure && 
+    testCase.failure;
+
+  // Allow enhanced updates, block true duplicates
+  const isDuplicate = processedWebhooks.has(statusKey) && !isEnhancedUpdate;
+  
   if (isDuplicate) {
     log('warn', '⚠️ Duplicate test case webhook detected', { compositeKey, status: testCase.status });
     return {
@@ -139,7 +150,16 @@ async function processWebhookData(webhookData) {
     };
   }
 
-  // Store test case result
+  // ENHANCED: Log when processing an enhanced update
+  if (isEnhancedUpdate) {
+    log('info', '🔄 Processing enhanced update with failure details', { 
+      compositeKey, 
+      status: testCase.status,
+      hasFailureObject: !!testCase.failure
+    });
+  }
+
+  // Store test case result (will overwrite existing result with enhanced data)
   const testCaseData = {
     requestId: webhookData.requestId,
     testCaseId: testCaseId,
@@ -151,15 +171,18 @@ async function processWebhookData(webhookData) {
 
   testCaseResults.set(compositeKey, testCaseData);
 
-  // Mark as processed for this specific status
-  processedWebhooks.add(`${compositeKey}-${testCase.status}`);
+  // Mark as processed for this specific status (only if not an enhanced update)
+  if (!isEnhancedUpdate) {
+    processedWebhooks.add(statusKey);
+  }
 
   // Broadcast to WebSocket subscribers
   const broadcastData = {
     requestId: webhookData.requestId,
     testCaseId: testCaseId,
     testCase: testCase,
-    timestamp: testCaseData.receivedAt
+    timestamp: testCaseData.receivedAt,
+    enhanced: isEnhancedUpdate
   };
 
   // Send to request-specific room
@@ -168,14 +191,17 @@ async function processWebhookData(webhookData) {
   log('info', '✅ Test case webhook processed successfully', {
     compositeKey,
     status: testCase.status,
+    enhanced: isEnhancedUpdate,
+    hasFailureObject: !!testCase.failure,
     subscribers: io.sockets.adapter.rooms.get(`request-${webhookData.requestId}`)?.size || 0
   });
 
   return {
-    message: 'Test case webhook processed successfully',
+    message: isEnhancedUpdate ? 'Test case webhook enhanced with failure details' : 'Test case webhook processed successfully',
     compositeKey,
     testCaseId,
     status: testCase.status,
+    enhanced: isEnhancedUpdate,
     broadcastSent: true
   };
 }

@@ -1,4 +1,3 @@
-// webhook-server.js - Modified for per test case results handling
 require('dotenv').config();
 
 const express = require('express');
@@ -57,26 +56,30 @@ app.use(cors({
 // Logging
 function log(level, message, data = null) {
   const timestamp = new Date().toISOString();
+  // Only log debug messages if not in production or if explicitly enabled
+  if (level === 'debug' && isProduction) {
+      return; // Skip debug logs in production
+  }
   console.log(`[${timestamp}] ${level.toUpperCase()}: ${message}`, data || '');
 }
 
 // MODIFIED: Validation for single test case per webhook
 function validateWebhookPayload(payload) {
   const errors = [];
-  
+
   if (!payload) {
     errors.push('Payload is required');
     return { valid: false, errors };
   }
-  
+
   if (!payload.requestId) {
     errors.push('requestId is required for proper request isolation');
   }
-  
+
   if (!payload.timestamp) {
     errors.push('timestamp is required');
   }
-  
+
   if (!payload.results || !Array.isArray(payload.results)) {
     errors.push('results must be an array');
   } else if (payload.results.length !== 1) {
@@ -84,29 +87,36 @@ function validateWebhookPayload(payload) {
   } else if (!payload.results[0].id) {
     errors.push('test case id is required in results');
   }
-  
+
   return { valid: errors.length === 0, errors };
 }
 
 // MODIFIED: Process webhook for individual test case
 async function processWebhookData(webhookData) {
-  log('info', '🔔 Processing test case webhook', { 
+  log('info', '🔔 Processing test case webhook', {
     requestId: webhookData.requestId,
     testCaseId: webhookData.results[0]?.id,
     status: webhookData.results[0]?.status
   });
-  
+
   // Validate webhook payload
   const validation = validateWebhookPayload(webhookData);
   if (!validation.valid) {
     log('error', '❌ Invalid webhook payload', validation.errors);
     throw new Error(`Invalid webhook payload: ${validation.errors.join(', ')}`);
   }
-  
+
   const testCase = webhookData.results[0];
   const testCaseId = testCase.id;
   const compositeKey = `${webhookData.requestId}-${testCaseId}`;
-  
+
+  // Add this block to log the failure object if it exists
+  if (testCase.failure) {
+    log('debug', `🚨 Failure object received for test case ${testCaseId}:`, JSON.stringify(testCase.failure, null, 2));
+  } else {
+    log('debug', `✅ No failure object for test case ${testCaseId}. Status: ${testCase.status}`);
+  }
+
   // Track request execution
   if (!requestExecutions.has(webhookData.requestId)) {
     requestExecutions.set(webhookData.requestId, {
@@ -114,10 +124,10 @@ async function processWebhookData(webhookData) {
       timestamp: Date.now()
     });
   }
-  
+
   const execution = requestExecutions.get(webhookData.requestId);
   execution.testCaseIds.add(testCaseId);
-  
+
   // Check for duplicate processing (allow incremental updates)
   const isDuplicate = processedWebhooks.has(`${compositeKey}-${testCase.status}`);
   if (isDuplicate) {
@@ -128,7 +138,7 @@ async function processWebhookData(webhookData) {
       duplicate: true
     };
   }
-  
+
   // Store test case result
   const testCaseData = {
     requestId: webhookData.requestId,
@@ -138,12 +148,12 @@ async function processWebhookData(webhookData) {
     compositeKey,
     ttl: Date.now() + (parseInt(process.env.RESULT_TTL) || 3600000) // 1 hour default
   };
-  
+
   testCaseResults.set(compositeKey, testCaseData);
-  
+
   // Mark as processed for this specific status
   processedWebhooks.add(`${compositeKey}-${testCase.status}`);
-  
+
   // Broadcast to WebSocket subscribers
   const broadcastData = {
     requestId: webhookData.requestId,
@@ -151,16 +161,16 @@ async function processWebhookData(webhookData) {
     testCase: testCase,
     timestamp: testCaseData.receivedAt
   };
-  
+
   // Send to request-specific room
   io.to(`request-${webhookData.requestId}`).emit('test-case-result', broadcastData);
-  
-  log('info', '✅ Test case webhook processed successfully', { 
-    compositeKey, 
+
+  log('info', '✅ Test case webhook processed successfully', {
+    compositeKey,
     status: testCase.status,
     subscribers: io.sockets.adapter.rooms.get(`request-${webhookData.requestId}`)?.size || 0
   });
-  
+
   return {
     message: 'Test case webhook processed successfully',
     compositeKey,
@@ -182,7 +192,7 @@ app.get('/api/webhook/health', (req, res) => {
     processedWebhooks: processedWebhooks.size,
     uptime: process.uptime()
   };
-  
+
   res.status(200).json(stats);
 });
 
@@ -190,7 +200,7 @@ app.get('/api/webhook/health', (req, res) => {
 app.post('/api/webhook/test-results', async (req, res) => {
   try {
     const webhookData = req.body;
-    
+
     log('info', '📥 Webhook received', {
       requestId: webhookData?.requestId,
       testCaseId: webhookData?.results?.[0]?.id,
@@ -198,18 +208,21 @@ app.post('/api/webhook/test-results', async (req, res) => {
       userAgent: req.get('User-Agent'),
       source: req.get('X-Request-ID') || 'unknown'
     });
-    
+
+    // Add this line to log the entire incoming payload for inspection
+    log('debug', 'Full incoming webhook payload:', JSON.stringify(webhookData, null, 2));
+
     const result = await processWebhookData(webhookData);
-    
+
     res.status(200).json({
       success: true,
       ...result,
       receivedAt: new Date().toISOString()
     });
-    
+
   } catch (error) {
     log('error', '❌ Error processing webhook', error.message);
-    
+
     res.status(400).json({
       success: false,
       error: 'Webhook processing failed',
@@ -222,11 +235,11 @@ app.post('/api/webhook/test-results', async (req, res) => {
 app.get('/api/test-results/request/:requestId/testcase/:testCaseId', (req, res) => {
   const { requestId, testCaseId } = req.params;
   const compositeKey = `${requestId}-${testCaseId}`;
-  
+
   log('debug', `📋 Frontend requesting specific test case result`, { compositeKey });
-  
+
   const result = testCaseResults.get(compositeKey);
-  
+
   if (!result) {
     return res.status(404).json({
       error: 'Test case result not found',
@@ -235,7 +248,14 @@ app.get('/api/test-results/request/:requestId/testcase/:testCaseId', (req, res) 
       compositeKey
     });
   }
-  
+
+  // Add this line to log the retrieved testCase, including the failure object if present
+  if (result.testCase && result.testCase.failure) {
+    log('debug', `Retrieved test case ${testCaseId} contains failure:`, JSON.stringify(result.testCase.failure, null, 2));
+  } else if (result.testCase) {
+     log('debug', `Retrieved test case ${testCaseId}. Status: ${result.testCase.status}`);
+  }
+
   // Check if result has expired
   if (result.ttl && result.ttl < Date.now()) {
     testCaseResults.delete(compositeKey);
@@ -246,7 +266,7 @@ app.get('/api/test-results/request/:requestId/testcase/:testCaseId', (req, res) 
       compositeKey
     });
   }
-  
+
   res.status(200).json({
     requestId,
     testCaseId,
@@ -259,9 +279,9 @@ app.get('/api/test-results/request/:requestId/testcase/:testCaseId', (req, res) 
 // NEW: Get all test case results for a request
 app.get('/api/test-results/request/:requestId', (req, res) => {
   const { requestId } = req.params;
-  
+
   log('debug', `📋 Frontend requesting all test case results for request: ${requestId}`);
-  
+
   const execution = requestExecutions.get(requestId);
   if (!execution) {
     return res.status(404).json({
@@ -269,14 +289,14 @@ app.get('/api/test-results/request/:requestId', (req, res) => {
       requestId
     });
   }
-  
+
   const results = [];
   const expiredKeys = [];
-  
+
   for (const testCaseId of execution.testCaseIds) {
     const compositeKey = `${requestId}-${testCaseId}`;
     const result = testCaseResults.get(compositeKey);
-    
+
     if (result) {
       if (result.ttl && result.ttl < Date.now()) {
         expiredKeys.push(compositeKey);
@@ -289,17 +309,17 @@ app.get('/api/test-results/request/:requestId', (req, res) => {
       }
     }
   }
-  
+
   // Clean up expired results
   expiredKeys.forEach(key => testCaseResults.delete(key));
-  
+
   if (results.length === 0) {
     return res.status(404).json({
       error: 'No valid test case results found',
       requestId
     });
   }
-  
+
   res.status(200).json({
     requestId,
     testCaseCount: results.length,
@@ -313,10 +333,10 @@ app.get('/api/test-results/request/:requestId', (req, res) => {
 app.post('/api/test-webhook', async (req, res) => {
   try {
     log('info', '🧪 Manual test case webhook trigger');
-    
+
     const testRequestId = `manual-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     const testCaseId = req.body.testCaseId || 'TC_001';
-    
+
     const testWebhook = {
       requestId: testRequestId,
       timestamp: new Date().toISOString(),
@@ -330,18 +350,18 @@ app.post('/api/test-webhook', async (req, res) => {
         }
       ]
     };
-    
+
     const result = await processWebhookData(testWebhook);
-    
+
     res.status(200).json({
       ...result,
       testTrigger: true,
       message: 'Manual test case webhook processed successfully'
     });
-    
+
   } catch (error) {
     log('error', '❌ Error processing manual test webhook', error.message);
-    
+
     res.status(500).json({
       error: 'Manual test webhook failed',
       message: isProduction ? 'Manual test webhook failed' : error.message
@@ -352,10 +372,10 @@ app.post('/api/test-webhook', async (req, res) => {
 // NEW: Clear results for a specific request
 app.delete('/api/test-results/request/:requestId', (req, res) => {
   const { requestId } = req.params;
-  
+
   const execution = requestExecutions.get(requestId);
   let clearedCount = 0;
-  
+
   if (execution) {
     // Clear all test case results for this request
     for (const testCaseId of execution.testCaseIds) {
@@ -364,22 +384,22 @@ app.delete('/api/test-results/request/:requestId', (req, res) => {
         testCaseResults.delete(compositeKey);
         clearedCount++;
       }
-      
+
       // Clear processed webhook tracking
       for (const status of ['Not Started', 'Running', 'Passed', 'Failed']) {
         processedWebhooks.delete(`${compositeKey}-${status}`);
       }
     }
-    
+
     // Remove execution tracking
     requestExecutions.delete(requestId);
   }
-  
-  log('info', clearedCount > 0 ? '🗑️ Request results cleared' : '🗑️ No results to clear', { 
-    requestId, 
-    clearedCount 
+
+  log('info', clearedCount > 0 ? '🗑️ Request results cleared' : '🗑️ No results to clear', {
+    requestId,
+    clearedCount
   });
-  
+
   res.status(200).json({
     message: clearedCount > 0 ? 'Results cleared' : 'No results to clear',
     requestId,
@@ -391,25 +411,25 @@ app.delete('/api/test-results/request/:requestId', (req, res) => {
 
 io.on('connection', (socket) => {
   log('info', `🔌 Quality Tracker connected: ${socket.id}`);
-  
+
   socket.emit('connection-info', {
     socketId: socket.id,
     timestamp: new Date().toISOString(),
     serverVersion: process.env.npm_package_version || '1.0.0'
   });
-  
+
   // Subscribe to specific request for test case updates
   socket.on('subscribe-request', (requestId) => {
     socket.join(`request-${requestId}`);
     log('debug', `📝 Client ${socket.id} subscribed to request ${requestId}`);
-    
+
     // Send existing results for this request if available
     const execution = requestExecutions.get(requestId);
     if (execution) {
       for (const testCaseId of execution.testCaseIds) {
         const compositeKey = `${requestId}-${testCaseId}`;
         const existingResult = testCaseResults.get(compositeKey);
-        
+
         if (existingResult && (!existingResult.ttl || existingResult.ttl > Date.now())) {
           const broadcastData = {
             requestId: requestId,
@@ -417,19 +437,19 @@ io.on('connection', (socket) => {
             testCase: existingResult.testCase,
             timestamp: existingResult.receivedAt
           };
-          
+
           socket.emit('test-case-result', broadcastData);
           log('debug', `📤 Sent existing test case result to ${socket.id}`, { compositeKey });
         }
       }
     }
   });
-  
+
   socket.on('unsubscribe-request', (requestId) => {
     socket.leave(`request-${requestId}`);
     log('debug', `📝 Client ${socket.id} unsubscribed from request ${requestId}`);
   });
-  
+
   socket.on('disconnect', (reason) => {
     log('info', `🔌 Quality Tracker disconnected: ${socket.id}`, { reason });
   });
@@ -465,11 +485,11 @@ server.listen(PORT, HOST, () => {
 // Graceful shutdown
 process.on('SIGINT', () => {
   log('info', '\n🛑 Shutting down webhook server...');
-  
+
   io.close(() => {
     log('info', '📡 WebSocket server closed');
   });
-  
+
   server.close(() => {
     log('info', '✅ HTTP server closed');
     process.exit(0);

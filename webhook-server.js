@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const db = require('./database/connection');
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
@@ -209,7 +210,9 @@ async function processWebhookData(webhookData) {
 // ===== API ENDPOINTS =====
 
 // Health check
-app.get('/api/webhook/health', (req, res) => {
+
+
+app.get('/api/webhook/health', async (req, res) => {
   const stats = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -219,8 +222,26 @@ app.get('/api/webhook/health', (req, res) => {
     uptime: process.uptime()
   };
 
+  // Add database health check
+  if (process.env.ENABLE_DATABASE === 'true') {
+    try {
+      const dbHealthy = await db.healthCheck();
+      const poolStats = db.getPoolStats();
+      stats.database = {
+        healthy: dbHealthy,
+        pool: poolStats
+      };
+    } catch (error) {
+      stats.database = {
+        healthy: false,
+        error: error.message
+      };
+    }
+  }
+
   res.status(200).json(stats);
 });
+
 
 // MAIN: Webhook endpoint for test case results
 app.post('/api/webhook/test-results', async (req, res) => {

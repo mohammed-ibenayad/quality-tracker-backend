@@ -5,20 +5,31 @@
   "main": "webhook-server.js",
   "scripts": {
     "start": "node webhook-server.js",
-    "dev": "nodemon webhook-server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "LOG_LEVEL=debug nodemon webhook-server.js",
+    "api": "node api-server.js",
+    "api:dev": "LOG_LEVEL=debug nodemon api-server.js",
+    "db:test": "node database/test-connection.js",
+    "db:test:verbose": "LOG_LEVEL=debug node database/test-connection.js",
+    "db:seed": "node database/seed.js",
+    "db:migrate": "PGPASSWORD=$DB_PASSWORD psql -U $DB_USER -d $DB_NAME -h $DB_HOST -f database/init/01-schema.sql"
   },
-  "keywords": ["quality", "tracker", "webhook", "testing"],
+  "keywords": [
+    "quality",
+    "tracker",
+    "webhook",
+    "testing"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^4.21.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "pg": "^8.16.3",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.1.10"
   },
   "engines": {
     "node": ">=16.0.0"

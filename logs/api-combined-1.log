@@ -1,0 +1,368 @@
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+Error: bind EADDRINUSE 0.0.0.0:3002
+    at listenOnPrimaryHandle (node:net:1885:18)
+    at rr (node:internal/cluster/child:162:12)
+    at Worker.<anonymous> (node:internal/cluster/child:112:7)
+    at process.onInternalMessage (node:internal/cluster/utils:49:5)
+    at process.emit (node:events:529:35)
+    at emit (node:internal/child_process:944:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+2025-10-13T15:56:36: 🚀 Quality Tracker API Server running on 0.0.0.0:3002
+2025-10-13T15:56:36: 🌐 Environment: production
+2025-10-13T15:56:36: 🔗 Health check: http://0.0.0.0:3002/api/health
+2025-10-13T15:56:36: ✅ Database connection established
+2025-10-13T16:05:26: 
+🛑 Shutting down database connection...
+2025-10-13T16:05:43: 🚀 Quality Tracker API Server running on 0.0.0.0:3002
+2025-10-13T16:05:43: 🌐 Environment: production
+2025-10-13T16:05:43: 🔗 Health check: http://0.0.0.0:3002/api/health
+2025-10-13T16:05:43: ✅ Database connection established
+2025-10-13T16:45:26: 
+🛑 Shutting down database connection...
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+Error: Cannot find module './database/connection'
+Require stack:
+- /home/asal/quality-tracker-backend/database/connection.js
+- /home/asal/quality-tracker-backend/api-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:81:25)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/home/asal/quality-tracker-backend/database/connection.js:2:12)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at Hook._require.Module.require (/usr/lib/node_modules/pm2/node_modules/require-in-the-middle/index.js:101:39)
+2025-10-13T16:49:18: 🚀 Quality Tracker API Server running on 0.0.0.0:3002
+2025-10-13T16:49:18: 🌐 Environment: production
+2025-10-13T16:49:18: 🔗 Health check: http://0.0.0.0:3002/api/health
+2025-10-13T16:49:18: ✅ Database connection established

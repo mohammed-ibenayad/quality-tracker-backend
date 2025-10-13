@@ -1,0 +1,160 @@
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const db = require('./database/connection');
+
+// Import routes
+const requirementsRoutes = require('./api/routes/requirements');
+const testCasesRoutes = require('./api/routes/testCases');
+const versionsRoutes = require('./api/routes/versions');
+const mappingsRoutes = require('./api/routes/mappings');
+
+const app = express();
+const PORT = process.env.API_PORT || 3002; // Different port from webhook server
+const HOST = process.env.HOST || '0.0.0.0';
+
+// CORS configuration
+const corsOptions = {
+  origin: [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URL_ALT,
+    process.env.INTERNAL_IP,
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ].filter(Boolean),
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+// Middleware
+app.use(cors(corsOptions));
+app.use(express.json({ limit: process.env.MAX_PAYLOAD_SIZE || '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.MAX_PAYLOAD_SIZE || '10mb' }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (process.env.LOG_LEVEL === 'debug') {
+      console.log(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    }
+  });
+  next();
+});
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbHealthy = await db.healthCheck();
+    const poolStats = db.getPoolStats();
+
+    res.json({
+      success: true,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: dbHealthy,
+        pool: poolStats
+      },
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      error: error.message
+    });
+  }
+});
+
+// API Routes
+app.use('/api/requirements', requirementsRoutes);
+app.use('/api/test-cases', testCasesRoutes);
+app.use('/api/versions', versionsRoutes);
+app.use('/api/mappings', mappingsRoutes);
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Quality Tracker API Server',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      requirements: '/api/requirements',
+      testCases: '/api/test-cases',
+      versions: '/api/versions',
+      mappings: '/api/mappings'
+    }
+  });
+});
+
+// 404 handler
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'API endpoint not found',
+    path: req.path,
+    method: req.method
+  });
+});
+
+// Error handler
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
+  });
+});
+
+// Start server
+const server = app.listen(PORT, HOST, async () => {
+  console.log(`🚀 Quality Tracker API Server running on ${HOST}:${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🔗 Health check: http://${HOST}:${PORT}/api/health`);
+  
+  // Test database connection
+  try {
+    const isHealthy = await db.healthCheck();
+    if (isHealthy) {
+      console.log('✅ Database connection established');
+    } else {
+      console.warn('⚠️ Database connection failed');
+    }
+  } catch (error) {
+    console.error('❌ Database connection error:', error.message);
+  }
+});
+
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} received, shutting down gracefully...`);
+  
+  server.close(async () => {
+    console.log('✅ HTTP server closed');
+    
+    try {
+      await db.close();
+      console.log('✅ Database connections closed');
+    } catch (error) {
+      console.error('❌ Error closing database:', error.message);
+    }
+    
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    console.error('⚠️ Forcing shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+module.exports = { app, server };

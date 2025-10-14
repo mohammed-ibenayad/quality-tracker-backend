@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const importRoutes = require('./api/routes/import');
+
 require('dotenv').config();
 
 const db = require('./database/connection');
@@ -75,6 +77,8 @@ app.use('/api/requirements', requirementsRoutes);
 app.use('/api/test-cases', testCasesRoutes);
 app.use('/api/versions', versionsRoutes);
 app.use('/api/mappings', mappingsRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/import', importRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -86,7 +90,8 @@ app.get('/', (req, res) => {
       requirements: '/api/requirements',
       testCases: '/api/test-cases',
       versions: '/api/versions',
-      mappings: '/api/mappings'
+      mappings: '/api/mappings',
+      import: '/api/import'
     }
   });
 });

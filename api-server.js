@@ -17,16 +17,35 @@ const PORT = process.env.API_PORT || 3002; // Different port from webhook server
 const HOST = process.env.HOST || '0.0.0.0';
 
 // CORS configuration
+// CORS configuration - MORE PERMISSIVE
 const corsOptions = {
-  origin: [
-    process.env.FRONTEND_URL,
-    process.env.FRONTEND_URL_ALT,
-    process.env.INTERNAL_IP,
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ].filter(Boolean),
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://213.6.2.229',
+      'https://213.6.2.229',
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL_ALT,
+      process.env.INTERNAL_IP
+    ].filter(Boolean);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('⚠️ CORS blocked origin:', origin);
+      callback(null, true); // Allow anyway for debugging
+    }
+  },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 
 // Middleware

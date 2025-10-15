@@ -72,7 +72,7 @@ CREATE INDEX idx_workspace_members_role ON workspace_members(role);
 -- VERSIONS/RELEASES
 -- ============================================
 
-CREATE TYPE version_status AS ENUM ('Planning', 'In Development', 'In Testing', 'Released', 'Deprecated');
+CREATE TYPE version_status AS ENUM ('Planned', 'In Development', 'In Testing', 'Released', 'Deprecated');
 
 CREATE TABLE versions (
   id VARCHAR(50) PRIMARY KEY, -- User-defined like 'v1.0', 'v2.0'
@@ -80,7 +80,7 @@ CREATE TABLE versions (
   
   name VARCHAR(255) NOT NULL,
   description TEXT,
-  status version_status NOT NULL DEFAULT 'Planning',
+  status version_status NOT NULL DEFAULT 'Planned',
   
   -- Release Dates
   planned_release_date DATE,

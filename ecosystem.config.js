@@ -12,10 +12,7 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
-      error_file: '/home/asal/quality-tracker-backend/logs/webhook-err.log',
-      out_file: '/home/asal/quality-tracker-backend/logs/webhook-out.log',
-      log_file: '/home/asal/quality-tracker-backend/logs/webhook-combined.log',
+      max_memory_restart: '1G',      
       time: true
     },
     {
@@ -30,10 +27,7 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
-      error_file: '/home/asal/quality-tracker-backend/logs/api-err.log',
-      out_file: '/home/asal/quality-tracker-backend/logs/api-out.log',
-      log_file: '/home/asal/quality-tracker-backend/logs/api-combined.log',
+      max_memory_restart: '1G',      
       time: true
     }
   ]

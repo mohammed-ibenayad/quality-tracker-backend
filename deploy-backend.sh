@@ -70,39 +70,41 @@ fi
 cd "$BACKEND_DIR" || error_exit "Cannot change to backend directory"
 
 # ==============================================================================
-# STEP 1: GIT STATUS CHECK
+# STEP 1: GIT STATUS CHECK (INFORMATIONAL ONLY)
 # ==============================================================================
 section "STEP 1: Checking Git Status"
 
-# Check for uncommitted changes
+info "Current branch: $(git branch --show-current)"
+info "Last local commit: $(git log -1 --oneline)"
+
+# Show uncommitted changes if any (but don't block deployment)
 if ! git diff-index --quiet HEAD --; then
-    warning "You have uncommitted changes!"
+    warning "Local uncommitted changes detected (will be discarded):"
     git status --short
-    echo ""
-    read -p "Continue anyway? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        error_exit "Deployment cancelled"
-    fi
+    info "These changes will be overwritten by force pull"
+else
+    success "Working directory is clean"
 fi
 
-info "Current branch: $(git branch --show-current)"
-info "Last commit: $(git log -1 --oneline)"
-
 # ==============================================================================
-# STEP 2: CHECKOUT AND PULL
+# STEP 2: FORCE PULL LATEST CHANGES
 # ==============================================================================
-section "STEP 2: Pulling Latest Changes"
+section "STEP 2: Force Pulling Latest Changes"
 
-# Checkout target branch
-info "Checking out branch: $DEPLOY_BRANCH"
-git checkout "$DEPLOY_BRANCH" || error_exit "Failed to checkout branch $DEPLOY_BRANCH"
+info "Fetching latest changes from remote..."
+git fetch origin || error_exit "Failed to fetch from remote"
 
-# Pull latest changes
-info "Pulling from origin/$DEPLOY_BRANCH..."
-git pull origin "$DEPLOY_BRANCH" || error_exit "Failed to pull changes"
+info "Force checking out branch: $DEPLOY_BRANCH"
+git checkout -f "$DEPLOY_BRANCH" || error_exit "Failed to checkout branch $DEPLOY_BRANCH"
 
-success "Code updated successfully"
+info "Resetting to origin/$DEPLOY_BRANCH (discarding local changes)..."
+git reset --hard "origin/$DEPLOY_BRANCH" || error_exit "Failed to reset to remote branch"
+
+# Clean untracked files except .env and node_modules
+info "Cleaning untracked files (keeping .env)..."
+git clean -fd -e .env -e node_modules || warning "Clean failed (continuing anyway)"
+
+success "Code updated successfully (forced)"
 info "Current commit: $(git log -1 --oneline)"
 
 # ==============================================================================

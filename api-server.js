@@ -11,12 +11,12 @@ const requirementsRoutes = require('./api/routes/requirements');
 const testCasesRoutes = require('./api/routes/testCases');
 const versionsRoutes = require('./api/routes/versions');
 const mappingsRoutes = require('./api/routes/mappings');
+const workspacesRoutes = require('./api/routes/workspaces'); // New workspace routes
 
 const app = express();
 const PORT = process.env.API_PORT || 3002; // Different port from webhook server
 const HOST = process.env.HOST || '0.0.0.0';
 
-// CORS configuration
 // CORS configuration - MORE PERMISSIVE
 const corsOptions = {
   origin: function (origin, callback) {
@@ -97,7 +97,7 @@ app.use('/api/test-cases', testCasesRoutes);
 app.use('/api/versions', versionsRoutes);
 app.use('/api/mappings', mappingsRoutes);
 app.use('/api/import', importRoutes);
-app.use('/api/import', importRoutes);
+app.use('/api/workspaces', workspacesRoutes); // Add workspace routes
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -110,7 +110,8 @@ app.get('/', (req, res) => {
       testCases: '/api/test-cases',
       versions: '/api/versions',
       mappings: '/api/mappings',
-      import: '/api/import'
+      import: '/api/import',
+      workspaces: '/api/workspaces' // Add workspace endpoint to documentation
     }
   });
 });

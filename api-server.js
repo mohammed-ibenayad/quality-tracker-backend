@@ -7,17 +7,18 @@ require('dotenv').config();
 const db = require('./database/connection');
 
 // Import routes
+const authRoutes = require('./api/routes/auth'); // NEW - Authentication routes
 const requirementsRoutes = require('./api/routes/requirements');
 const testCasesRoutes = require('./api/routes/testCases');
 const versionsRoutes = require('./api/routes/versions');
 const mappingsRoutes = require('./api/routes/mappings');
-const workspacesRoutes = require('./api/routes/workspaces'); // New workspace routes
+const workspacesRoutes = require('./api/routes/workspaces'); // Workspace routes
 
 const app = express();
 const PORT = process.env.API_PORT || 3002; // Different port from webhook server
 const HOST = process.env.HOST || '0.0.0.0';
 
-// CORS configuration - MORE PERMISSIVE
+// CORS configuration - MORE PERMISSIVE (KEPT YOUR ORIGINAL)
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl)
@@ -92,12 +93,13 @@ app.get('/api/health', async (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes); // NEW - Authentication routes
 app.use('/api/requirements', requirementsRoutes);
 app.use('/api/test-cases', testCasesRoutes);
 app.use('/api/versions', versionsRoutes);
 app.use('/api/mappings', mappingsRoutes);
 app.use('/api/import', importRoutes);
-app.use('/api/workspaces', workspacesRoutes); // Add workspace routes
+app.use('/api/workspaces', workspacesRoutes); // Workspace routes
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -105,13 +107,14 @@ app.get('/', (req, res) => {
     message: 'Quality Tracker API Server',
     version: '1.0.0',
     endpoints: {
+      auth: '/api/auth',
       health: '/api/health',
       requirements: '/api/requirements',
       testCases: '/api/test-cases',
       versions: '/api/versions',
       mappings: '/api/mappings',
       import: '/api/import',
-      workspaces: '/api/workspaces' // Add workspace endpoint to documentation
+      workspaces: '/api/workspaces'
     }
   });
 });

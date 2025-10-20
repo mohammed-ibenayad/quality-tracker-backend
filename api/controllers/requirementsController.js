@@ -8,7 +8,7 @@ const getAllRequirements = async (req, res) => {
   try {
     // ✅ REQUIRE workspace_id - no default fallback
     const workspaceId = req.query.workspace_id;
-    
+
     if (!workspaceId) {
       return res.status(400).json({
         success: false,
@@ -28,7 +28,7 @@ const getAllRequirements = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
+
     const result = await db.query(`
       SELECT 
         r.*,
@@ -87,7 +87,7 @@ const getRequirementById = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
+
     const result = await db.query(`
       SELECT 
         r.*,
@@ -170,6 +170,7 @@ const createRequirement = async (req, res) => {
     }
 
     const {
+      id,
       name,
       description = '',
       type = 'Functional',      // ✅ FIXED: Capitalized
@@ -178,6 +179,14 @@ const createRequirement = async (req, res) => {
       tags = [],
       custom_fields = {}
     } = req.body;
+
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Requirement id is required'
+      });
+    }
 
     if (!name) {
       return res.status(400).json({
@@ -188,7 +197,7 @@ const createRequirement = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO requirements (
-        workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
+        id, workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);

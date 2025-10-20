@@ -3,15 +3,36 @@ const router = express.Router();
 const db = require('../../database/connection');
 const { authenticateToken, canRead, canWrite } = require('../middleware/auth');
 
-const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
-
 // All routes require authentication
 router.use(authenticateToken);
+
+// ✅ REMOVED: const DEFAULT_WORKSPACE_ID
 
 // GET /api/mappings - Get all requirement-test mappings (ALL roles can read)
 router.get('/', canRead, async (req, res) => {
   try {
-    const workspaceId = req.query.workspace_id || DEFAULT_WORKSPACE_ID;
+    // ✅ REQUIRE workspace_id - no default fallback
+    const workspaceId = req.query.workspace_id;
+    
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // ✅ Verify user has access to this workspace
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
     
     const result = await db.query(`
       SELECT 
@@ -53,7 +74,7 @@ router.get('/', canRead, async (req, res) => {
 // POST /api/mappings - Create new mapping (owner, admin, editor only)
 router.post('/', canWrite, async (req, res) => {
   try {
-    const { requirement_id, test_case_id } = req.body;
+    const { requirement_id, test_case_id, workspace_id } = req.body;
 
     if (!requirement_id || !test_case_id) {
       return res.status(400).json({
@@ -62,11 +83,65 @@ router.post('/', canWrite, async (req, res) => {
       });
     }
 
+    // ✅ REQUIRE workspace_id
+    if (!workspace_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // ✅ Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspace_id, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
+
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to create mappings'
+      });
+    }
+
+    // ✅ Verify both requirement and test case belong to the workspace
+    const verifyReq = await db.query(
+      'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
+      [requirement_id, workspace_id]
+    );
+
+    const verifyTC = await db.query(
+      'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
+      [test_case_id, workspace_id]
+    );
+
+    if (verifyReq.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Requirement not found in this workspace'
+      });
+    }
+
+    if (verifyTC.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test case not found in this workspace'
+      });
+    }
+
     await db.query(`
-      INSERT INTO requirement_test_mappings (requirement_id, test_case_id)
-      VALUES ($1, $2)
+      INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
+      VALUES ($1, $2, $3)
       ON CONFLICT (requirement_id, test_case_id) DO NOTHING
-    `, [requirement_id, test_case_id]);
+    `, [requirement_id, test_case_id, req.user.id]);
 
     res.status(201).json({
       success: true,
@@ -86,6 +161,53 @@ router.post('/', canWrite, async (req, res) => {
 router.delete('/:requirement_id/:test_case_id', canWrite, async (req, res) => {
   try {
     const { requirement_id, test_case_id } = req.params;
+    const workspaceId = req.query.workspace_id;
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
+
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to delete mappings'
+      });
+    }
+
+    // Verify both requirement and test case belong to the workspace
+    const verifyReq = await db.query(
+      'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
+      [requirement_id, workspaceId]
+    );
+
+    const verifyTC = await db.query(
+      'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
+      [test_case_id, workspaceId]
+    );
+
+    if (verifyReq.rows.length === 0 || verifyTC.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Mapping not found in this workspace'
+      });
+    }
 
     await db.query(`
       DELETE FROM requirement_test_mappings

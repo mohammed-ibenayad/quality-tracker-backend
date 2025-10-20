@@ -177,18 +177,19 @@ const importData = async (req, res) => {
 
             await client.query(`
               INSERT INTO test_cases (
-                id, workspace_id, name, description, type, priority, status,
-                steps, expected_result, tags, created_by
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                id, workspace_id, name, description, category, priority, status,
+                automation_status, steps, expected_result, tags, created_by
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
               ON CONFLICT (id) DO NOTHING
             `, [
               tc.id,
               workspace_id, // ✅ Always use provided workspace_id
               tc.name,
               tc.description || '',
-              tc.type || 'manual',
-              tc.priority || 'medium',
-              tc.status || 'draft',
+              tc.category || null,
+              tc.priority || 'Medium',
+              tc.status || 'Not Run',
+              tc.automation_status || tc.type || 'Manual', // ✅ Map old 'type' to 'automation_status'
               JSON.stringify(steps),
               tc.expectedResult || tc.expected_result || '',
               JSON.stringify(tags),

@@ -1,8 +1,7 @@
 const db = require('../../database/connection');
 
-// Default workspace and user IDs (from seed data)
-const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
+// ✅ REMOVED: const DEFAULT_WORKSPACE_ID
+// ✅ REMOVED: const DEFAULT_USER_ID
 
 /**
  * Import requirements and test cases from exported JSON
@@ -10,7 +9,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 const importData = async (req, res) => {
   try {
-    const { requirements, testCases, versions, mappings } = req.body;
+    const { requirements, testCases, versions, mappings, workspace_id } = req.body;
 
     // Validate input
     if (!requirements && !testCases && !versions) {
@@ -20,8 +19,37 @@ const importData = async (req, res) => {
       });
     }
 
-    const workspaceId = req.body.workspace_id || DEFAULT_WORKSPACE_ID;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    // ✅ REQUIRE workspace_id
+    if (!workspace_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // ✅ Verify user has access to this workspace
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspace_id, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
+
+    // ✅ Verify user has write permissions
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to import data'
+      });
+    }
+
+    const userId = req.user.id;
 
     const summary = {
       requirements: { imported: 0, skipped: 0, errors: [] },
@@ -44,7 +72,7 @@ const importData = async (req, res) => {
               ON CONFLICT (id) DO NOTHING
             `, [
               version.id,
-              workspaceId,
+              workspace_id, // ✅ Always use provided workspace_id
               version.name,
               version.description || null,
               version.status || 'Planning',
@@ -68,67 +96,59 @@ const importData = async (req, res) => {
       if (requirements && Array.isArray(requirements)) {
         for (const req of requirements) {
           try {
-            // Validate required fields
-            if (!req.id || !req.name) {
-              summary.requirements.skipped++;
-              summary.requirements.errors.push(`Missing required fields for requirement`);
-              continue;
-            }
-
-            // Insert requirement
-            await client.query(`
-              INSERT INTO requirements (
-                id, workspace_id, name, description, priority, type, status,
-                business_impact, technical_complexity, regulatory_factor,
-                usage_frequency, test_depth_factor, min_test_cases,
-                owner, category, tags, parent_requirement_id,
-                external_id, external_url, version_number, created_by, updated_by
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-              ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                priority = EXCLUDED.priority,
-                type = EXCLUDED.type,
-                status = EXCLUDED.status,
-                updated_by = EXCLUDED.updated_by,
-                updated_at = NOW()
-            `, [
-              req.id,
-              workspaceId,
-              req.name,
-              req.description || '',
-              req.priority || 'Medium',
-              req.type || 'Functional',
-              req.status || 'Active',
-              req.businessImpact || null,
-              req.technicalComplexity || null,
-              req.regulatoryFactor || null,
-              req.usageFrequency || null,
-              req.testDepthFactor || null,
-              req.minTestCases || null,
-              req.owner || null,
-              req.category || null,
-              JSON.stringify(req.tags || []),
-              req.parentRequirementId || null,
-              req.externalId || null,
-              req.externalUrl || null,
-              req.versionNumber || null,
-              userId,
-              userId
-            ]);
-
-            // Insert requirement-version mappings
-            if (req.versions && Array.isArray(req.versions)) {
-              for (const versionId of req.versions) {
-                await client.query(`
-                  INSERT INTO requirement_versions (requirement_id, version_id)
-                  VALUES ($1, $2)
-                  ON CONFLICT DO NOTHING
-                `, [req.id, versionId]);
+            // Normalize tags
+            let tags = [];
+            if (req.tags) {
+              if (Array.isArray(req.tags)) {
+                tags = req.tags;
+              } else if (typeof req.tags === 'string') {
+                tags = req.tags.split(',').map(t => t.trim()).filter(t => t);
               }
             }
 
+            // Normalize values to match database ENUMs (Title Case)
+            const normalizeEnumValue = (value, defaultValue) => {
+              if (!value) return defaultValue;
+              // Capitalize first letter of each word
+              return value.split(/[\s-_]/).map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+              ).join(' ');
+            };
+
+            await client.query(`
+              INSERT INTO requirements (
+                id, workspace_id, name, description, type, priority, status, tags, created_by
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              ON CONFLICT (id) DO NOTHING
+            `, [
+              req.id,
+              workspace_id, // ✅ Always use provided workspace_id
+              req.name,
+              req.description || '',
+              normalizeEnumValue(req.type, 'Functional'),     // ✅ FIXED: Normalize to Title Case
+              normalizeEnumValue(req.priority, 'Medium'),      // ✅ FIXED: Normalize to Title Case
+              normalizeEnumValue(req.status, 'Active'),        // ✅ FIXED: Normalize to Title Case
+              JSON.stringify(tags),
+              userId
+            ]);
+
             summary.requirements.imported++;
+
+            // Import requirement-version mappings
+            if (req.versions && Array.isArray(req.versions)) {
+              for (const versionId of req.versions) {
+                try {
+                  await client.query(`
+                    INSERT INTO requirement_versions (requirement_id, version_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (requirement_id, version_id) DO NOTHING
+                  `, [req.id, versionId]);
+                } catch (error) {
+                  // Silently skip invalid version references
+                  console.warn(`Skipped version mapping for ${req.id} -> ${versionId}`);
+                }
+              }
+            }
           } catch (error) {
             summary.requirements.skipped++;
             summary.requirements.errors.push(`Requirement ${req.id}: ${error.message}`);
@@ -140,107 +160,143 @@ const importData = async (req, res) => {
       if (testCases && Array.isArray(testCases)) {
         for (const tc of testCases) {
           try {
-            // Validate required fields
-            if (!tc.id || !tc.name) {
-              summary.testCases.skipped++;
-              summary.testCases.errors.push(`Missing required fields for test case`);
-              continue;
+            // Normalize tags
+            let tags = [];
+            if (tc.tags) {
+              if (Array.isArray(tc.tags)) {
+                tags = tc.tags;
+              } else if (typeof tc.tags === 'string') {
+                tags = tc.tags.split(',').map(t => t.trim()).filter(t => t);
+              }
             }
 
-            // Insert test case
+            // Normalize steps
+            let steps = [];
+            if (tc.steps) {
+              if (Array.isArray(tc.steps)) {
+                steps = tc.steps;
+              } else if (typeof tc.steps === 'string') {
+                try {
+                  steps = JSON.parse(tc.steps);
+                } catch (e) {
+                  steps = [{ action: tc.steps, expected: '' }];
+                }
+              }
+            }
+
             await client.query(`
               INSERT INTO test_cases (
-                id, workspace_id, name, description, steps, expected_result,
-                preconditions, test_data, category, priority, tags,
-                automation_status, automation_path, estimated_duration,
-                status, assignee, created_by, updated_by
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-              ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                steps = EXCLUDED.steps,
-                expected_result = EXCLUDED.expected_result,
-                preconditions = EXCLUDED.preconditions,
-                test_data = EXCLUDED.test_data,
-                category = EXCLUDED.category,
-                priority = EXCLUDED.priority,
-                tags = EXCLUDED.tags,
-                automation_status = EXCLUDED.automation_status,
-                automation_path = EXCLUDED.automation_path,
-                estimated_duration = EXCLUDED.estimated_duration,
-                status = EXCLUDED.status,
-                assignee = EXCLUDED.assignee,
-                updated_by = EXCLUDED.updated_by,
-                updated_at = NOW()
+                id, workspace_id, name, description, category, priority, status,
+                automation_status, steps, expected_result, tags, created_by
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+              ON CONFLICT (id) DO NOTHING
             `, [
               tc.id,
-              workspaceId,
+              workspace_id, // ✅ Always use provided workspace_id
               tc.name,
               tc.description || '',
-              JSON.stringify(tc.steps || []),
-              tc.expectedResult || '',
-              tc.preconditions || '',
-              tc.testData || '',
-              tc.category || '',
+              tc.category || null,
               tc.priority || 'Medium',
-              JSON.stringify(tc.tags || []),
-              tc.automationStatus || 'Manual',
-              tc.automationPath || '',
-              tc.estimatedDuration || null,
               tc.status || 'Not Run',
-              tc.assignee || '',
-              userId,
+              tc.automation_status || tc.type || 'Manual', // ✅ Map old 'type' to 'automation_status'
+              JSON.stringify(steps),
+              tc.expectedResult || tc.expected_result || '',
+              JSON.stringify(tags),
               userId
             ]);
 
-            // Insert test case-version mappings (support both formats)
-            const versions = tc.applicableVersions || (tc.version ? [tc.version] : []);
-            if (versions && Array.isArray(versions)) {
-              for (const versionId of versions) {
-                await client.query(`
-                  INSERT INTO test_case_versions (test_case_id, version_id)
-                  VALUES ($1, $2)
-                  ON CONFLICT DO NOTHING
-                `, [tc.id, versionId]);
-              }
-            }
-
-            // Insert requirement-test case mappings
-            if (tc.requirementIds && Array.isArray(tc.requirementIds)) {
-              for (const reqId of tc.requirementIds) {
-                await client.query(`
-                  INSERT INTO requirement_test_mappings (requirement_id, test_case_id, coverage_type, created_by)
-                  VALUES ($1, $2, $3, $4)
-                  ON CONFLICT DO NOTHING
-                `, [reqId, tc.id, 'direct', userId]);
-                
-                summary.mappings.created++;
-              }
-            }
-
             summary.testCases.imported++;
+
+            // Import test case-version mappings
+            if (tc.applicableVersions && Array.isArray(tc.applicableVersions)) {
+              for (const versionId of tc.applicableVersions) {
+                try {
+                  await client.query(`
+                    INSERT INTO test_case_versions (test_case_id, version_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (test_case_id, version_id) DO NOTHING
+                  `, [tc.id, versionId]);
+                } catch (error) {
+                  console.warn(`Skipped version mapping for ${tc.id} -> ${versionId}`);
+                }
+              }
+            }
           } catch (error) {
             summary.testCases.skipped++;
-            summary.testCases.errors.push(`Test case ${tc.id}: ${error.message}`);
+            summary.testCases.errors.push(`Test Case ${tc.id}: ${error.message}`);
           }
         }
       }
 
-      // 4. Import explicit mappings (if provided separately)
+      // 4. Import Mappings (Requirement-TestCase relationships)
       if (mappings && typeof mappings === 'object') {
-        for (const [reqId, testCaseIds] of Object.entries(mappings)) {
+        for (const [requirementId, testCaseIds] of Object.entries(mappings)) {
           if (Array.isArray(testCaseIds)) {
-            for (const tcId of testCaseIds) {
+            for (const testCaseId of testCaseIds) {
               try {
-                await client.query(`
-                  INSERT INTO requirement_test_mappings (requirement_id, test_case_id, coverage_type, created_by)
-                  VALUES ($1, $2, $3, $4)
-                  ON CONFLICT DO NOTHING
-                `, [reqId, tcId, 'direct', userId]);
-                
-                summary.mappings.created++;
+                // ✅ Verify both IDs belong to the same workspace
+                const reqCheck = await client.query(
+                  'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
+                  [requirementId, workspace_id]
+                );
+
+                const tcCheck = await client.query(
+                  'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
+                  [testCaseId, workspace_id]
+                );
+
+                if (reqCheck.rows.length > 0 && tcCheck.rows.length > 0) {
+                  await client.query(`
+                    INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (requirement_id, test_case_id) DO NOTHING
+                  `, [requirementId, testCaseId, userId]);
+
+                  summary.mappings.created++;
+                } else {
+                  console.warn(`Skipped mapping: ${requirementId} -> ${testCaseId} (not in workspace)`);
+                }
               } catch (error) {
-                summary.mappings.errors.push(`Mapping ${reqId}->${tcId}: ${error.message}`);
+                summary.mappings.errors.push(
+                  `Mapping ${requirementId}->${testCaseId}: ${error.message}`
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Also handle mappings from testCase.requirementIds
+      if (testCases && Array.isArray(testCases)) {
+        for (const tc of testCases) {
+          if (tc.requirementIds && Array.isArray(tc.requirementIds)) {
+            for (const reqId of tc.requirementIds) {
+              try {
+                // ✅ Verify both IDs belong to the same workspace
+                const reqCheck = await client.query(
+                  'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
+                  [reqId, workspace_id]
+                );
+
+                const tcCheck = await client.query(
+                  'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
+                  [tc.id, workspace_id]
+                );
+
+                if (reqCheck.rows.length > 0 && tcCheck.rows.length > 0) {
+                  await client.query(`
+                    INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (requirement_id, test_case_id) DO NOTHING
+                  `, [reqId, tc.id, userId]);
+
+                  summary.mappings.created++;
+                } else {
+                  console.warn(`Skipped mapping from testCase: ${reqId} -> ${tc.id} (not in workspace)`);
+                }
+              } catch (error) {
+                // Silently skip duplicate mappings
+                console.warn(`Duplicate mapping skipped: ${reqId} -> ${tc.id}`);
               }
             }
           }
@@ -248,43 +304,16 @@ const importData = async (req, res) => {
       }
     });
 
-    // Return summary
     res.json({
       success: true,
       message: 'Import completed',
-      summary: {
-        requirements: {
-          imported: summary.requirements.imported,
-          skipped: summary.requirements.skipped,
-          total: requirements?.length || 0
-        },
-        testCases: {
-          imported: summary.testCases.imported,
-          skipped: summary.testCases.skipped,
-          total: testCases?.length || 0
-        },
-        versions: {
-          imported: summary.versions.imported,
-          skipped: summary.versions.skipped,
-          total: versions?.length || 0
-        },
-        mappings: {
-          created: summary.mappings.created
-        },
-        errors: [
-          ...summary.requirements.errors,
-          ...summary.testCases.errors,
-          ...summary.versions.errors,
-          ...summary.mappings.errors
-        ]
-      }
+      summary
     });
-
   } catch (error) {
     console.error('Import error:', error);
     res.status(500).json({
       success: false,
-      error: 'Import failed',
+      error: 'Failed to import data',
       message: error.message
     });
   }

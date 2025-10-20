@@ -1,14 +1,33 @@
 const db = require('../../database/connection');
 
-const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 /**
  * Get all test cases for a workspace
+ * ✅ FIXED: workspace_id is now REQUIRED
  */
 const getAllTestCases = async (req, res) => {
   try {
-    const workspaceId = req.query.workspace_id || DEFAULT_WORKSPACE_ID;
+    // ✅ REQUIRE workspace_id - no default fallback
+    const workspaceId = req.query.workspace_id;
+    
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // ✅ Verify user has access to this workspace
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
     
     const result = await db.query(`
       SELECT 
@@ -54,6 +73,27 @@ const getAllTestCases = async (req, res) => {
 const getTestCaseById = async (req, res) => {
   try {
     const { id } = req.params;
+    const workspaceId = req.query.workspace_id;
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // Verify user has access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
     
     const result = await db.query(`
       SELECT 
@@ -73,9 +113,9 @@ const getTestCaseById = async (req, res) => {
       FROM test_cases tc
       LEFT JOIN test_case_versions tcv ON tc.id = tcv.test_case_id
       LEFT JOIN requirement_test_mappings rtm ON tc.id = rtm.test_case_id
-      WHERE tc.id = $1
+      WHERE tc.id = $1 AND tc.workspace_id = $2
       GROUP BY tc.id
-    `, [id]);
+    `, [id, workspaceId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -103,86 +143,72 @@ const getTestCaseById = async (req, res) => {
  */
 const createTestCase = async (req, res) => {
   try {
-    const {
-      id,
-      name,
-      description = '',
-      steps = [],
-      expected_result = '',
-      preconditions = '',
-      test_data = '',
-      category = '',
-      priority = 'Medium',
-      tags = [],
-      automation_status = 'Manual',
-      automation_path = '',
-      estimated_duration = null,
-      status = 'Not Run',
-      assignee = '',
-      applicable_versions = [],
-      requirement_ids = []
-    } = req.body;
+    const workspaceId = req.body.workspace_id;
 
-    // Validate required fields
-    if (!id || !name) {
+    if (!workspaceId) {
       return res.status(400).json({
         success: false,
-        error: 'ID and name are required'
+        error: 'workspace_id is required'
       });
     }
 
-    const workspaceId = req.body.workspace_id || DEFAULT_WORKSPACE_ID;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    await db.transaction(async (client) => {
-      // Insert test case
-      await client.query(`
-        INSERT INTO test_cases (
-          id, workspace_id, name, description, steps, expected_result,
-          preconditions, test_data, category, priority, tags,
-          automation_status, automation_path, estimated_duration,
-          status, assignee, created_by, updated_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-      `, [
-        id, workspaceId, name, description, JSON.stringify(steps), expected_result,
-        preconditions, test_data, category, priority, JSON.stringify(tags),
-        automation_status, automation_path, estimated_duration,
-        status, assignee, userId, userId
-      ]);
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
 
-      // Insert version mappings
-      if (applicable_versions.length > 0) {
-        for (const versionId of applicable_versions) {
-          await client.query(`
-            INSERT INTO test_case_versions (test_case_id, version_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `, [id, versionId]);
-        }
-      }
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to create test cases'
+      });
+    }
 
-      // Insert requirement mappings
-      if (requirement_ids.length > 0) {
-        for (const reqId of requirement_ids) {
-          await client.query(`
-            INSERT INTO requirement_test_mappings (requirement_id, test_case_id, coverage_type, created_by)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT DO NOTHING
-          `, [reqId, id, 'direct', userId]);
-        }
-      }
+    const {
+      name,
+      description = '',
+      priority = 'Medium',
+      status = 'Not Run',
+      steps = [],
+      expected_result = '',
+      tags = [],
+      category = null,
+      automation_status = 'Manual',
+      custom_fields = {}
+    } = req.body;
 
-      // Audit log
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, new_value)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [workspaceId, userId, 'create', 'test_case', id, JSON.stringify({ id, name })]);
-    });
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Test case name is required'
+      });
+    }
+
+    const result = await db.query(`
+      INSERT INTO test_cases (
+        workspace_id, name, description, category, priority, status, 
+        automation_status, steps, expected_result, tags, custom_fields, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      workspaceId, name, description, category, priority, status,
+      automation_status, JSON.stringify(steps), expected_result, 
+      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+    ]);
 
     res.status(201).json({
       success: true,
       message: 'Test case created successfully',
-      data: { id }
+      data: result.rows[0]
     });
   } catch (error) {
     console.error('Error creating test case:', error);
@@ -200,98 +226,132 @@ const createTestCase = async (req, res) => {
 const updateTestCase = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    const workspaceId = req.body.workspace_id || req.query.workspace_id;
 
-    // Get old value for audit
-    const oldResult = await db.query('SELECT * FROM test_cases WHERE id = $1', [id]);
-    if (oldResult.rows.length === 0) {
-      return res.status(404).json({
+    if (!workspaceId) {
+      return res.status(400).json({
         success: false,
-        error: 'Test case not found'
+        error: 'workspace_id is required'
       });
     }
 
-    const oldValue = oldResult.rows[0];
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    // Build update query dynamically
-    const allowedFields = [
-      'name', 'description', 'steps', 'expected_result', 'preconditions', 'test_data',
-      'category', 'priority', 'tags', 'automation_status', 'automation_path',
-      'estimated_duration', 'status', 'assignee'
-    ];
-
-    const updateFields = [];
-    const values = [];
-    let valueIndex = 1;
-
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        updateFields.push(`${field} = $${valueIndex}`);
-        const value = ['steps', 'tags'].includes(field) ? 
-          JSON.stringify(updates[field]) : updates[field];
-        values.push(value);
-        valueIndex++;
-      }
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
     }
 
-    if (updateFields.length === 0 && !updates.applicable_versions && !updates.requirement_ids) {
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to update test cases'
+      });
+    }
+
+    // Verify test case belongs to workspace
+    const tcCheck = await db.query(
+      'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
+      [id, workspaceId]
+    );
+
+    if (tcCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test case not found in this workspace'
+      });
+    }
+
+    const {
+      name,
+      description,
+      category,
+      priority,
+      status,
+      steps,
+      expected_result,
+      automation_status,
+      tags,
+      custom_fields
+    } = req.body;
+
+    const updates = [];
+    const values = [];
+    let paramCounter = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = ${paramCounter}`);
+      values.push(name);
+      paramCounter++;
+    }
+    if (description !== undefined) {
+      updates.push(`description = ${paramCounter}`);
+      values.push(description);
+      paramCounter++;
+    }
+    if (category !== undefined) {
+      updates.push(`category = ${paramCounter}`);
+      values.push(category);
+      paramCounter++;
+    }
+    if (priority !== undefined) {
+      updates.push(`priority = ${paramCounter}`);
+      values.push(priority);
+      paramCounter++;
+    }
+    if (status !== undefined) {
+      updates.push(`status = ${paramCounter}`);
+      values.push(status);
+      paramCounter++;
+    }
+    if (automation_status !== undefined) {
+      updates.push(`automation_status = ${paramCounter}`);
+      values.push(automation_status);
+      paramCounter++;
+    }
+    if (steps !== undefined) {
+      updates.push(`steps = ${paramCounter}`);
+      values.push(JSON.stringify(steps));
+      paramCounter++;
+    }
+    if (expected_result !== undefined) {
+      updates.push(`expected_result = ${paramCounter}`);
+      values.push(expected_result);
+      paramCounter++;
+    }
+    if (tags !== undefined) {
+      updates.push(`tags = ${paramCounter}`);
+      values.push(JSON.stringify(tags));
+      paramCounter++;
+    }
+    if (custom_fields !== undefined) {
+      updates.push(`custom_fields = ${paramCounter}`);
+      values.push(JSON.stringify(custom_fields));
+      paramCounter++;
+    }
+
+    if (updates.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No valid fields to update'
       });
     }
 
-    if (updateFields.length > 0) {
-      // Add updated_by and updated_at
-      updateFields.push(`updated_by = $${valueIndex}`);
-      values.push(userId);
-      valueIndex++;
+    values.push(id);
+    values.push(workspaceId);
 
-      updateFields.push(`updated_at = NOW()`);
-      values.push(id);
-
-      await db.query(`
-        UPDATE test_cases 
-        SET ${updateFields.join(', ')}
-        WHERE id = $${valueIndex}
-      `, values);
-    }
-
-    await db.transaction(async (client) => {
-      // Update versions if provided
-      if (updates.applicable_versions) {
-        await client.query('DELETE FROM test_case_versions WHERE test_case_id = $1', [id]);
-        
-        for (const versionId of updates.applicable_versions) {
-          await client.query(`
-            INSERT INTO test_case_versions (test_case_id, version_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `, [id, versionId]);
-        }
-      }
-
-      // Update requirement mappings if provided
-      if (updates.requirement_ids) {
-        await client.query('DELETE FROM requirement_test_mappings WHERE test_case_id = $1', [id]);
-        
-        for (const reqId of updates.requirement_ids) {
-          await client.query(`
-            INSERT INTO requirement_test_mappings (requirement_id, test_case_id, coverage_type, created_by)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT DO NOTHING
-          `, [reqId, id, 'direct', userId]);
-        }
-      }
-
-      // Audit log
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, old_value, new_value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [oldValue.workspace_id, userId, 'update', 'test_case', id, 
-          JSON.stringify(oldValue), JSON.stringify(updates)]);
-    });
+    await db.query(`
+      UPDATE test_cases
+      SET ${updates.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramCounter} AND workspace_id = $${paramCounter + 1}
+    `, values);
 
     res.json({
       success: true,
@@ -313,26 +373,40 @@ const updateTestCase = async (req, res) => {
 const deleteTestCase = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    const workspaceId = req.query.workspace_id;
 
-    const result = await db.query('SELECT * FROM test_cases WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({
+    if (!workspaceId) {
+      return res.status(400).json({
         success: false,
-        error: 'Test case not found'
+        error: 'workspace_id is required'
       });
     }
 
-    const testCase = result.rows[0];
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    await db.transaction(async (client) => {
-      await client.query('DELETE FROM test_cases WHERE id = $1', [id]);
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
 
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, old_value)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [testCase.workspace_id, userId, 'delete', 'test_case', id, JSON.stringify(testCase)]);
-    });
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to delete test cases'
+      });
+    }
+
+    await db.query(
+      'DELETE FROM test_cases WHERE id = $1 AND workspace_id = $2',
+      [id, workspaceId]
+    );
 
     res.json({
       success: true,

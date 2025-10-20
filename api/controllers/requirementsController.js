@@ -1,14 +1,33 @@
 const db = require('../../database/connection');
 
-const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 /**
  * Get all requirements for a workspace
+ * ✅ FIXED: workspace_id is now REQUIRED
  */
 const getAllRequirements = async (req, res) => {
   try {
-    const workspaceId = req.query.workspace_id || DEFAULT_WORKSPACE_ID;
+    // ✅ REQUIRE workspace_id - no default fallback
+    const workspaceId = req.query.workspace_id;
+    
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // ✅ Verify user has access to this workspace
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
     
     const result = await db.query(`
       SELECT 
@@ -47,6 +66,27 @@ const getAllRequirements = async (req, res) => {
 const getRequirementById = async (req, res) => {
   try {
     const { id } = req.params;
+    const workspaceId = req.query.workspace_id;
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace_id is required'
+      });
+    }
+
+    // Verify user has access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
     
     const result = await db.query(`
       SELECT 
@@ -61,7 +101,7 @@ const getRequirementById = async (req, res) => {
           json_agg(
             DISTINCT jsonb_build_object(
               'test_case_id', rtm.test_case_id,
-              'coverage_type', rtm.coverage_type
+              'status', rtm.status
             )
           ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
           '[]'
@@ -69,9 +109,9 @@ const getRequirementById = async (req, res) => {
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
       LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
-      WHERE r.id = $1
+      WHERE r.id = $1 AND r.workspace_id = $2
       GROUP BY r.id
-    `, [id]);
+    `, [id, workspaceId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -99,87 +139,64 @@ const getRequirementById = async (req, res) => {
  */
 const createRequirement = async (req, res) => {
   try {
-    const {
-      id,
-      name,
-      description,
-      priority = 'Medium',
-      type = 'Functional',
-      status = 'Active',
-      business_impact,
-      technical_complexity,
-      regulatory_factor,
-      usage_frequency,
-      owner,
-      category,
-      tags = [],
-      versions = []
-    } = req.body;
+    const workspaceId = req.body.workspace_id;
 
-    // Validate required fields
-    if (!id || !name) {
+    if (!workspaceId) {
       return res.status(400).json({
         success: false,
-        error: 'ID and name are required'
+        error: 'workspace_id is required'
       });
     }
 
-    const workspaceId = req.body.workspace_id || DEFAULT_WORKSPACE_ID;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    // Calculate TDF
-    const test_depth_factor = (
-      (business_impact || 3) * 0.4 +
-      (technical_complexity || 3) * 0.3 +
-      (regulatory_factor || 3) * 0.2 +
-      (usage_frequency || 3) * 0.1
-    ).toFixed(1);
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
 
-    // Calculate min test cases
-    const tdf = parseFloat(test_depth_factor);
-    let min_test_cases = 1;
-    if (tdf >= 4.1) min_test_cases = 8;
-    else if (tdf >= 3.1) min_test_cases = 5;
-    else if (tdf >= 2.1) min_test_cases = 3;
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to create requirements'
+      });
+    }
 
-    await db.transaction(async (client) => {
-      // Insert requirement
-      await client.query(`
-        INSERT INTO requirements (
-          id, workspace_id, name, description, priority, type, status,
-          business_impact, technical_complexity, regulatory_factor, usage_frequency,
-          test_depth_factor, min_test_cases, owner, category, tags,
-          created_by, updated_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-      `, [
-        id, workspaceId, name, description, priority, type, status,
-        business_impact, technical_complexity, regulatory_factor, usage_frequency,
-        test_depth_factor, min_test_cases, owner, category, JSON.stringify(tags),
-        userId, userId
-      ]);
+    const {
+      name,
+      description = '',
+      type = 'Functional',      // ✅ FIXED: Capitalized
+      priority = 'Medium',       // ✅ FIXED: Capitalized
+      status = 'Active',         // ✅ FIXED: Capitalized (changed from 'Draft')
+      tags = [],
+      custom_fields = {}
+    } = req.body;
 
-      // Insert version mappings
-      if (versions.length > 0) {
-        for (const versionId of versions) {
-          await client.query(`
-            INSERT INTO requirement_versions (requirement_id, version_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `, [id, versionId]);
-        }
-      }
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Requirement name is required'
+      });
+    }
 
-      // Audit log
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, new_value)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [workspaceId, userId, 'create', 'requirement', id, JSON.stringify({ id, name })]);
-    });
+    const result = await db.query(`
+      INSERT INTO requirements (
+        workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);
 
     res.status(201).json({
       success: true,
       message: 'Requirement created successfully',
-      data: { id, test_depth_factor, min_test_cases }
+      data: result.rows[0]
     });
   } catch (error) {
     console.error('Error creating requirement:', error);
@@ -197,108 +214,114 @@ const createRequirement = async (req, res) => {
 const updateRequirement = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    const workspaceId = req.body.workspace_id || req.query.workspace_id;
 
-    // Get old value for audit
-    const oldResult = await db.query('SELECT * FROM requirements WHERE id = $1', [id]);
-    if (oldResult.rows.length === 0) {
-      return res.status(404).json({
+    if (!workspaceId) {
+      return res.status(400).json({
         success: false,
-        error: 'Requirement not found'
+        error: 'workspace_id is required'
       });
     }
 
-    const oldValue = oldResult.rows[0];
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    // Build update query dynamically
-    const allowedFields = [
-      'name', 'description', 'priority', 'type', 'status',
-      'business_impact', 'technical_complexity', 'regulatory_factor', 'usage_frequency',
-      'owner', 'category', 'tags'
-    ];
-
-    const updateFields = [];
-    const values = [];
-    let valueIndex = 1;
-
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        updateFields.push(`${field} = $${valueIndex}`);
-        values.push(field === 'tags' ? JSON.stringify(updates[field]) : updates[field]);
-        valueIndex++;
-      }
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
     }
 
-    if (updateFields.length === 0) {
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to update requirements'
+      });
+    }
+
+    // Verify requirement belongs to workspace
+    const reqCheck = await db.query(
+      'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
+      [id, workspaceId]
+    );
+
+    if (reqCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Requirement not found in this workspace'
+      });
+    }
+
+    const {
+      name,
+      description,
+      type,
+      priority,
+      status,
+      tags,
+      custom_fields
+    } = req.body;
+
+    const updates = [];
+    const values = [];
+    let paramCounter = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramCounter}`);
+      values.push(name);
+      paramCounter++;
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCounter}`);
+      values.push(description);
+      paramCounter++;
+    }
+    if (type !== undefined) {
+      updates.push(`type = $${paramCounter}`);
+      values.push(type);
+      paramCounter++;
+    }
+    if (priority !== undefined) {
+      updates.push(`priority = $${paramCounter}`);
+      values.push(priority);
+      paramCounter++;
+    }
+    if (status !== undefined) {
+      updates.push(`status = $${paramCounter}`);
+      values.push(status);
+      paramCounter++;
+    }
+    if (tags !== undefined) {
+      updates.push(`tags = $${paramCounter}`);
+      values.push(JSON.stringify(tags));
+      paramCounter++;
+    }
+    if (custom_fields !== undefined) {
+      updates.push(`custom_fields = $${paramCounter}`);
+      values.push(JSON.stringify(custom_fields));
+      paramCounter++;
+    }
+
+    if (updates.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No valid fields to update'
       });
     }
 
-    // Add updated_by and updated_at
-    updateFields.push(`updated_by = $${valueIndex}`);
-    values.push(userId);
-    valueIndex++;
-
-    updateFields.push(`updated_at = NOW()`);
-
-    // Recalculate TDF if risk factors changed
-    if (updates.business_impact || updates.technical_complexity || 
-        updates.regulatory_factor || updates.usage_frequency) {
-      const bi = updates.business_impact || oldValue.business_impact;
-      const tc = updates.technical_complexity || oldValue.technical_complexity;
-      const rf = updates.regulatory_factor || oldValue.regulatory_factor;
-      const uf = updates.usage_frequency || oldValue.usage_frequency;
-
-      const tdf = (bi * 0.4 + tc * 0.3 + rf * 0.2 + uf * 0.1).toFixed(1);
-      let minTests = 1;
-      if (tdf >= 4.1) minTests = 8;
-      else if (tdf >= 3.1) minTests = 5;
-      else if (tdf >= 2.1) minTests = 3;
-
-      updateFields.push(`test_depth_factor = $${valueIndex}`);
-      values.push(tdf);
-      valueIndex++;
-
-      updateFields.push(`min_test_cases = $${valueIndex}`);
-      values.push(minTests);
-      valueIndex++;
-    }
-
     values.push(id);
+    values.push(workspaceId);
 
-    await db.transaction(async (client) => {
-      // Update requirement
-      await client.query(`
-        UPDATE requirements 
-        SET ${updateFields.join(', ')}
-        WHERE id = $${valueIndex}
-      `, values);
-
-      // Update versions if provided
-      if (updates.versions) {
-        // Delete old version mappings
-        await client.query('DELETE FROM requirement_versions WHERE requirement_id = $1', [id]);
-        
-        // Insert new version mappings
-        for (const versionId of updates.versions) {
-          await client.query(`
-            INSERT INTO requirement_versions (requirement_id, version_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `, [id, versionId]);
-        }
-      }
-
-      // Audit log
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, old_value, new_value)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [oldValue.workspace_id, userId, 'update', 'requirement', id, 
-          JSON.stringify(oldValue), JSON.stringify(updates)]);
-    });
+    await db.query(`
+      UPDATE requirements
+      SET ${updates.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramCounter} AND workspace_id = $${paramCounter + 1}
+    `, values);
 
     res.json({
       success: true,
@@ -320,29 +343,40 @@ const updateRequirement = async (req, res) => {
 const deleteRequirement = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || DEFAULT_USER_ID;
+    const workspaceId = req.query.workspace_id;
 
-    // Get requirement for audit
-    const result = await db.query('SELECT * FROM requirements WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({
+    if (!workspaceId) {
+      return res.status(400).json({
         success: false,
-        error: 'Requirement not found'
+        error: 'workspace_id is required'
       });
     }
 
-    const requirement = result.rows[0];
+    // Verify user has write access
+    const accessCheck = await db.query(`
+      SELECT role FROM workspace_members
+      WHERE workspace_id = $1 AND user_id = $2
+    `, [workspaceId, req.user.id]);
 
-    await db.transaction(async (client) => {
-      // Delete requirement (cascades to versions and mappings)
-      await client.query('DELETE FROM requirements WHERE id = $1', [id]);
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this workspace'
+      });
+    }
 
-      // Audit log
-      await client.query(`
-        INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, old_value)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [requirement.workspace_id, userId, 'delete', 'requirement', id, JSON.stringify(requirement)]);
-    });
+    const userRole = accessCheck.rows[0].role;
+    if (!['owner', 'admin', 'editor'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to delete requirements'
+      });
+    }
+
+    await db.query(
+      'DELETE FROM requirements WHERE id = $1 AND workspace_id = $2',
+      [id, workspaceId]
+    );
 
     res.json({
       success: true,

@@ -198,9 +198,9 @@ const createRequirement = async (req, res) => {
     const result = await db.query(`
       INSERT INTO requirements (
         id, workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
-    `, [workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);
+    `, [id, workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);
 
     res.status(201).json({
       success: true,

@@ -1,11 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../database/connection');
+const { authenticateToken, canRead, canWrite, isAdminOrOwner } = require('../middleware/auth');
 
 const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
 
-// GET /api/versions - Get all versions
-router.get('/', async (req, res) => {
+// All routes require authentication
+router.use(authenticateToken);
+
+// GET /api/versions - Get all versions (ALL roles can read)
+router.get('/', canRead, async (req, res) => {
   try {
     const workspaceId = req.query.workspace_id || DEFAULT_WORKSPACE_ID;
     
@@ -30,8 +34,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/versions/:id - Get single version
-router.get('/:id', async (req, res) => {
+// GET /api/versions/:id - Get single version (ALL roles can read)
+router.get('/:id', canRead, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -58,8 +62,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/versions - Create new version
-router.post('/', async (req, res) => {
+// POST /api/versions - Create new version (owner, admin, editor only)
+router.post('/', canWrite, async (req, res) => {
   try {
     const {
       id,
@@ -101,8 +105,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/versions/:id - Update version
-router.put('/:id', async (req, res) => {
+// PUT /api/versions/:id - Update version (owner, admin, editor only)
+router.put('/:id', canWrite, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -112,15 +116,15 @@ router.put('/:id', async (req, res) => {
 
     const updateFields = [];
     const values = [];
-    let valueIndex = 1;
+    let paramCounter = 1;
 
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        updateFields.push(`${field} = $${valueIndex}`);
-        values.push(updates[field]);
-        valueIndex++;
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        updateFields.push(`${key} = $${paramCounter}`);
+        values.push(updates[key]);
+        paramCounter++;
       }
-    }
+    });
 
     if (updateFields.length === 0) {
       return res.status(400).json({
@@ -129,13 +133,12 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    updateFields.push(`updated_at = NOW()`);
     values.push(id);
 
     await db.query(`
       UPDATE versions 
-      SET ${updateFields.join(', ')}
-      WHERE id = $${valueIndex}
+      SET ${updateFields.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramCounter}
     `, values);
 
     res.json({
@@ -152,8 +155,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/versions/:id - Delete version
-router.delete('/:id', async (req, res) => {
+// DELETE /api/versions/:id - Delete version (owner, admin only)
+router.delete('/:id', isAdminOrOwner, async (req, res) => {
   try {
     const { id } = req.params;
 

@@ -174,6 +174,7 @@ const createTestCase = async (req, res) => {
     }
 
     const {
+      id,
       name,
       description = '',
       priority = 'Medium',
@@ -186,6 +187,13 @@ const createTestCase = async (req, res) => {
       custom_fields = {}
     } = req.body;
 
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Test case id is required'
+      });
+    }
+
     if (!name) {
       return res.status(400).json({
         success: false,
@@ -195,14 +203,24 @@ const createTestCase = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO test_cases (
-        workspace_id, name, description, category, priority, status, 
+        id, workspace_id, name, description, category, priority, status, 
         automation_status, steps, expected_result, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
-      workspaceId, name, description, category, priority, status,
-      automation_status, JSON.stringify(steps), expected_result, 
-      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+      id,                         
+      workspaceId, 
+      name, 
+      description, 
+      category, 
+      priority, 
+      status,
+      automation_status, 
+      JSON.stringify(steps), 
+      expected_result, 
+      JSON.stringify(tags), 
+      JSON.stringify(custom_fields), 
+      req.user.id
     ]);
 
     res.status(201).json({

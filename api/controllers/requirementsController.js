@@ -172,9 +172,9 @@ const createRequirement = async (req, res) => {
     const {
       name,
       description = '',
-      type = 'functional',
-      priority = 'medium',
-      status = 'draft',
+      type = 'Functional',      // ✅ FIXED: Capitalized
+      priority = 'Medium',       // ✅ FIXED: Capitalized
+      status = 'Active',         // ✅ FIXED: Capitalized (changed from 'Draft')
       tags = [],
       custom_fields = {}
     } = req.body;

@@ -106,6 +106,15 @@ const importData = async (req, res) => {
               }
             }
 
+            // Normalize values to match database ENUMs (Title Case)
+            const normalizeEnumValue = (value, defaultValue) => {
+              if (!value) return defaultValue;
+              // Capitalize first letter of each word
+              return value.split(/[\s-_]/).map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+              ).join(' ');
+            };
+
             await client.query(`
               INSERT INTO requirements (
                 id, workspace_id, name, description, type, priority, status, tags, created_by
@@ -116,9 +125,9 @@ const importData = async (req, res) => {
               workspace_id, // ✅ Always use provided workspace_id
               req.name,
               req.description || '',
-              req.type || 'functional',
-              req.priority || 'medium',
-              req.status || 'draft',
+              normalizeEnumValue(req.type, 'Functional'),     // ✅ FIXED: Normalize to Title Case
+              normalizeEnumValue(req.priority, 'Medium'),      // ✅ FIXED: Normalize to Title Case
+              normalizeEnumValue(req.status, 'Active'),        // ✅ FIXED: Normalize to Title Case
               JSON.stringify(tags),
               userId
             ]);

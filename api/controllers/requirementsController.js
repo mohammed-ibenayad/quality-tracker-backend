@@ -325,35 +325,36 @@ const updateRequirement = async (req, res) => {
       values.push(JSON.stringify(custom_fields));
       paramCounter++;
     }
-
-    if (req.body.businessImpact !== undefined) {
+    
+    // ✅ Use the destructured variables, not req.body.xxx
+    if (businessImpact !== undefined) {
       updates.push(`business_impact = $${paramCounter}`);
-      values.push(req.body.businessImpact);
+      values.push(businessImpact);
       paramCounter++;
     }
-    if (req.body.technicalComplexity !== undefined) {
+    if (technicalComplexity !== undefined) {
       updates.push(`technical_complexity = $${paramCounter}`);
-      values.push(req.body.technicalComplexity);
+      values.push(technicalComplexity);
       paramCounter++;
     }
-    if (req.body.regulatoryFactor !== undefined) {
+    if (regulatoryFactor !== undefined) {
       updates.push(`regulatory_factor = $${paramCounter}`);
-      values.push(req.body.regulatoryFactor);
+      values.push(regulatoryFactor);
       paramCounter++;
     }
-    if (req.body.usageFrequency !== undefined) {
+    if (usageFrequency !== undefined) {
       updates.push(`usage_frequency = $${paramCounter}`);
-      values.push(req.body.usageFrequency);
+      values.push(usageFrequency);
       paramCounter++;
     }
-    if (req.body.testDepthFactor !== undefined) {
+    if (testDepthFactor !== undefined) {
       updates.push(`test_depth_factor = $${paramCounter}`);
-      values.push(req.body.testDepthFactor);
+      values.push(testDepthFactor);
       paramCounter++;
     }
-    if (req.body.minTestCases !== undefined) {
+    if (minTestCases !== undefined) {
       updates.push(`min_test_cases = $${paramCounter}`);
-      values.push(req.body.minTestCases);
+      values.push(minTestCases);
       paramCounter++;
     }
 

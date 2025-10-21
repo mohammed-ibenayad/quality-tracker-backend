@@ -170,23 +170,20 @@ const createRequirement = async (req, res) => {
     }
 
     const {
-      id,
       name,
       description = '',
-      type = 'Functional',      // ✅ FIXED: Capitalized
-      priority = 'Medium',       // ✅ FIXED: Capitalized
-      status = 'Active',         // ✅ FIXED: Capitalized (changed from 'Draft')
+      type = 'Functional',
+      priority = 'Medium',
+      status = 'Active',
+      businessImpact = null,        // ← Add (optional)
+      technicalComplexity = null,   // ← Add (optional)
+      regulatoryFactor = null,      // ← Add (optional)
+      usageFrequency = null,        // ← Add (optional)
+      testDepthFactor = null,       // ← Add (optional)
+      minTestCases = null,          // ← Add (optional)
       tags = [],
       custom_fields = {}
     } = req.body;
-
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        error: 'Requirement id is required'
-      });
-    }
 
     if (!name) {
       return res.status(400).json({
@@ -197,10 +194,17 @@ const createRequirement = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO requirements (
-        id, workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        workspace_id, name, description, type, priority, status, 
+        business_impact, technical_complexity, regulatory_factor, usage_frequency,
+        test_depth_factor, min_test_cases, tags, custom_fields, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
-    `, [id, workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);
+    `, [
+      workspaceId, name, description, type, priority, status,
+      businessImpact, technicalComplexity, regulatoryFactor, usageFrequency,
+      testDepthFactor, minTestCases,
+      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+    ]);
 
     res.status(201).json({
       success: true,
@@ -313,6 +317,37 @@ const updateRequirement = async (req, res) => {
     if (custom_fields !== undefined) {
       updates.push(`custom_fields = $${paramCounter}`);
       values.push(JSON.stringify(custom_fields));
+      paramCounter++;
+    }
+
+    if (req.body.businessImpact !== undefined) {
+      updates.push(`business_impact = $${paramCounter}`);
+      values.push(req.body.businessImpact);
+      paramCounter++;
+    }
+    if (req.body.technicalComplexity !== undefined) {
+      updates.push(`technical_complexity = $${paramCounter}`);
+      values.push(req.body.technicalComplexity);
+      paramCounter++;
+    }
+    if (req.body.regulatoryFactor !== undefined) {
+      updates.push(`regulatory_factor = $${paramCounter}`);
+      values.push(req.body.regulatoryFactor);
+      paramCounter++;
+    }
+    if (req.body.usageFrequency !== undefined) {
+      updates.push(`usage_frequency = $${paramCounter}`);
+      values.push(req.body.usageFrequency);
+      paramCounter++;
+    }
+    if (req.body.testDepthFactor !== undefined) {
+      updates.push(`test_depth_factor = $${paramCounter}`);
+      values.push(req.body.testDepthFactor);
+      paramCounter++;
+    }
+    if (req.body.minTestCases !== undefined) {
+      updates.push(`min_test_cases = $${paramCounter}`);
+      values.push(req.body.minTestCases);
       paramCounter++;
     }
 

@@ -87,7 +87,7 @@ const getRequirementById = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-
+    
     const result = await db.query(`
       SELECT 
         r.*,
@@ -96,19 +96,9 @@ const getRequirementById = async (req, res) => {
             DISTINCT rv.version_id
           ) FILTER (WHERE rv.version_id IS NOT NULL),
           '[]'
-        ) as versions,
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'test_case_id', rtm.test_case_id,
-              'status', rtm.status
-            )
-          ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
-          '[]'
-        ) as test_cases
+        ) as versions
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
-      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
       WHERE r.id = $1 AND r.workspace_id = $2
       GROUP BY r.id
     `, [id, workspaceId]);

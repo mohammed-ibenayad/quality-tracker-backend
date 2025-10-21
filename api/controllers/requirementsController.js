@@ -160,20 +160,29 @@ const createRequirement = async (req, res) => {
     }
 
     const {
+      id,                          // ✅ ADD THIS
       name,
       description = '',
       type = 'Functional',
       priority = 'Medium',
       status = 'Active',
-      businessImpact = null,        // ← Add (optional)
-      technicalComplexity = null,   // ← Add (optional)
-      regulatoryFactor = null,      // ← Add (optional)
-      usageFrequency = null,        // ← Add (optional)
-      testDepthFactor = null,       // ← Add (optional)
-      minTestCases = null,          // ← Add (optional)
+      businessImpact = null,       // ✅ ADD THIS
+      technicalComplexity = null,  // ✅ ADD THIS
+      regulatoryFactor = null,     // ✅ ADD THIS
+      usageFrequency = null,       // ✅ ADD THIS
+      testDepthFactor = null,      // ✅ ADD THIS
+      minTestCases = null,         // ✅ ADD THIS
       tags = [],
       custom_fields = {}
     } = req.body;
+
+    // ✅ Validate required fields
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Requirement ID is required'
+      });
+    }
 
     if (!name) {
       return res.status(400).json({
@@ -184,13 +193,13 @@ const createRequirement = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO requirements (
-        workspace_id, name, description, type, priority, status, 
+        id, workspace_id, name, description, type, priority, status, 
         business_impact, technical_complexity, regulatory_factor, usage_frequency,
         test_depth_factor, min_test_cases, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
-      workspaceId, name, description, type, priority, status,
+      id, workspaceId, name, description, type, priority, status,
       businessImpact, technicalComplexity, regulatoryFactor, usageFrequency,
       testDepthFactor, minTestCases,
       JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id

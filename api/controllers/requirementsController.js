@@ -277,7 +277,13 @@ const updateRequirement = async (req, res) => {
       priority,
       status,
       tags,
-      custom_fields
+      custom_fields,
+      businessImpact,
+      technicalComplexity,
+      regulatoryFactor,
+      usageFrequency,
+      testDepthFactor,
+      minTestCases
     } = req.body;
 
     const updates = [];

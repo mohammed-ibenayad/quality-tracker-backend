@@ -2,7 +2,7 @@ const db = require('../../database/connection');
 
 /**
  * Get all requirements for a workspace
- * ✅ FIXED: workspace_id is now REQUIRED
+ * ✅ FIXED: Updated GROUP BY to use req_uuid (UUID primary key)
  */
 const getAllRequirements = async (req, res) => {
   try {
@@ -41,7 +41,7 @@ const getAllRequirements = async (req, res) => {
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
       WHERE r.workspace_id = $1
-      GROUP BY r.id
+      GROUP BY r.req_uuid
       ORDER BY r.created_at DESC
     `, [workspaceId]);
 
@@ -62,6 +62,7 @@ const getAllRequirements = async (req, res) => {
 
 /**
  * Get single requirement by ID
+ * ✅ FIXED: Updated GROUP BY to use req_uuid (UUID primary key)
  */
 const getRequirementById = async (req, res) => {
   try {
@@ -100,7 +101,7 @@ const getRequirementById = async (req, res) => {
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
       WHERE r.id = $1 AND r.workspace_id = $2
-      GROUP BY r.id
+      GROUP BY r.req_uuid
     `, [id, workspaceId]);
 
     if (result.rows.length === 0) {
@@ -160,23 +161,22 @@ const createRequirement = async (req, res) => {
     }
 
     const {
-      id,                          // ✅ ADD THIS
+      id,
       name,
       description = '',
       type = 'Functional',
       priority = 'Medium',
       status = 'Active',
-      businessImpact = null,       // ✅ ADD THIS
-      technicalComplexity = null,  // ✅ ADD THIS
-      regulatoryFactor = null,     // ✅ ADD THIS
-      usageFrequency = null,       // ✅ ADD THIS
-      testDepthFactor = null,      // ✅ ADD THIS
-      minTestCases = null,         // ✅ ADD THIS
+      businessImpact = null,
+      technicalComplexity = null,
+      regulatoryFactor = null,
+      usageFrequency = null,
+      testDepthFactor = null,
+      minTestCases = null,
       tags = [],
       custom_fields = {}
     } = req.body;
 
-    // ✅ Validate required fields
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -325,7 +325,6 @@ const updateRequirement = async (req, res) => {
       paramCounter++;
     }
     
-    // ✅ Use the destructured variables, not req.body.xxx
     if (businessImpact !== undefined) {
       updates.push(`business_impact = $${paramCounter}`);
       values.push(businessImpact);

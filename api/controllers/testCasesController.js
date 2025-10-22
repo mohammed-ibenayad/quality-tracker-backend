@@ -2,7 +2,7 @@ const db = require('../../database/connection');
 
 /**
  * Get all test cases for a workspace
- * ✅ FIXED: workspace_id is now REQUIRED
+ * ✅ FIXED: Updated GROUP BY to use tc_uuid (UUID primary key)
  */
 const getAllTestCases = async (req, res) => {
   try {
@@ -48,7 +48,7 @@ const getAllTestCases = async (req, res) => {
       LEFT JOIN test_case_versions tcv ON tc.id = tcv.test_case_id
       LEFT JOIN requirement_test_mappings rtm ON tc.id = rtm.test_case_id
       WHERE tc.workspace_id = $1
-      GROUP BY tc.id
+      GROUP BY tc.tc_uuid
       ORDER BY tc.created_at DESC
     `, [workspaceId]);
 
@@ -69,6 +69,7 @@ const getAllTestCases = async (req, res) => {
 
 /**
  * Get single test case by ID
+ * ✅ FIXED: Updated GROUP BY to use tc_uuid (UUID primary key)
  */
 const getTestCaseById = async (req, res) => {
   try {
@@ -114,7 +115,7 @@ const getTestCaseById = async (req, res) => {
       LEFT JOIN test_case_versions tcv ON tc.id = tcv.test_case_id
       LEFT JOIN requirement_test_mappings rtm ON tc.id = rtm.test_case_id
       WHERE tc.id = $1 AND tc.workspace_id = $2
-      GROUP BY tc.id
+      GROUP BY tc.tc_uuid
     `, [id, workspaceId]);
 
     if (result.rows.length === 0) {
@@ -177,20 +178,20 @@ const createTestCase = async (req, res) => {
       id,
       name,
       description = '',
+      category = null,
       priority = 'Medium',
       status = 'Not Run',
+      automation_status = 'Manual',
       steps = [],
       expected_result = '',
       tags = [],
-      category = null,
-      automation_status = 'Manual',
       custom_fields = {}
     } = req.body;
 
     if (!id) {
       return res.status(400).json({
         success: false,
-        error: 'Test case id is required'
+        error: 'Test case ID is required'
       });
     }
 
@@ -203,24 +204,14 @@ const createTestCase = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO test_cases (
-        id, workspace_id, name, description, category, priority, status, 
+        id, workspace_id, name, description, category, priority, status,
         automation_status, steps, expected_result, tags, custom_fields, created_by
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
-      id,
-      workspaceId,
-      name,
-      description,
-      category,
-      priority,
-      status,
-      automation_status,
-      JSON.stringify(steps),
-      expected_result,
-      JSON.stringify(tags),
-      JSON.stringify(custom_fields),
-      req.user.id
+      id, workspaceId, name, description, category, priority, status,
+      automation_status, JSON.stringify(steps), expected_result,
+      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
     ]);
 
     res.status(201).json({
@@ -320,37 +311,37 @@ const updateTestCase = async (req, res) => {
       paramCounter++;
     }
     if (priority !== undefined) {
-      updates.push(`priority = $${paramCounter}`);  // ← Fixed
+      updates.push(`priority = $${paramCounter}`);
       values.push(priority);
       paramCounter++;
     }
     if (status !== undefined) {
-      updates.push(`status = $${paramCounter}`);  // ← Fixed
+      updates.push(`status = $${paramCounter}`);
       values.push(status);
       paramCounter++;
     }
     if (automation_status !== undefined) {
-      updates.push(`automation_status = $${paramCounter}`);  // ← Fixed
+      updates.push(`automation_status = $${paramCounter}`);
       values.push(automation_status);
       paramCounter++;
     }
     if (steps !== undefined) {
-      updates.push(`steps = $${paramCounter}`);  // ← Fixed
+      updates.push(`steps = $${paramCounter}`);
       values.push(JSON.stringify(steps));
       paramCounter++;
     }
     if (expected_result !== undefined) {
-      updates.push(`expected_result = $${paramCounter}`);  // ← Fixed
+      updates.push(`expected_result = $${paramCounter}`);
       values.push(expected_result);
       paramCounter++;
     }
     if (tags !== undefined) {
-      updates.push(`tags = $${paramCounter}`);  // ← Fixed
+      updates.push(`tags = $${paramCounter}`);
       values.push(JSON.stringify(tags));
       paramCounter++;
     }
     if (custom_fields !== undefined) {
-      updates.push(`custom_fields = $${paramCounter}`);  // ← Fixed
+      updates.push(`custom_fields = $${paramCounter}`);
       values.push(JSON.stringify(custom_fields));
       paramCounter++;
     }

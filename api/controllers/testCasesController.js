@@ -8,7 +8,7 @@ const getAllTestCases = async (req, res) => {
   try {
     // ✅ REQUIRE workspace_id - no default fallback
     const workspaceId = req.query.workspace_id;
-    
+
     if (!workspaceId) {
       return res.status(400).json({
         success: false,
@@ -28,7 +28,7 @@ const getAllTestCases = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
+
     const result = await db.query(`
       SELECT 
         tc.*,
@@ -94,7 +94,7 @@ const getTestCaseById = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
+
     const result = await db.query(`
       SELECT 
         tc.*,
@@ -174,6 +174,7 @@ const createTestCase = async (req, res) => {
     }
 
     const {
+      id,
       name,
       description = '',
       priority = 'Medium',
@@ -186,6 +187,13 @@ const createTestCase = async (req, res) => {
       custom_fields = {}
     } = req.body;
 
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Test case id is required'
+      });
+    }
+
     if (!name) {
       return res.status(400).json({
         success: false,
@@ -195,14 +203,24 @@ const createTestCase = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO test_cases (
-        workspace_id, name, description, category, priority, status, 
+        id, workspace_id, name, description, category, priority, status, 
         automation_status, steps, expected_result, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
-      workspaceId, name, description, category, priority, status,
-      automation_status, JSON.stringify(steps), expected_result, 
-      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+      id,
+      workspaceId,
+      name,
+      description,
+      category,
+      priority,
+      status,
+      automation_status,
+      JSON.stringify(steps),
+      expected_result,
+      JSON.stringify(tags),
+      JSON.stringify(custom_fields),
+      req.user.id
     ]);
 
     res.status(201).json({
@@ -287,52 +305,52 @@ const updateTestCase = async (req, res) => {
     let paramCounter = 1;
 
     if (name !== undefined) {
-      updates.push(`name = ${paramCounter}`);
+      updates.push(`name = $${paramCounter}`);
       values.push(name);
       paramCounter++;
     }
     if (description !== undefined) {
-      updates.push(`description = ${paramCounter}`);
+      updates.push(`description = $${paramCounter}`);
       values.push(description);
       paramCounter++;
     }
     if (category !== undefined) {
-      updates.push(`category = ${paramCounter}`);
+      updates.push(`category = $${paramCounter}`);
       values.push(category);
       paramCounter++;
     }
     if (priority !== undefined) {
-      updates.push(`priority = ${paramCounter}`);
+      updates.push(`priority = $${paramCounter}`);  // ← Fixed
       values.push(priority);
       paramCounter++;
     }
     if (status !== undefined) {
-      updates.push(`status = ${paramCounter}`);
+      updates.push(`status = $${paramCounter}`);  // ← Fixed
       values.push(status);
       paramCounter++;
     }
     if (automation_status !== undefined) {
-      updates.push(`automation_status = ${paramCounter}`);
+      updates.push(`automation_status = $${paramCounter}`);  // ← Fixed
       values.push(automation_status);
       paramCounter++;
     }
     if (steps !== undefined) {
-      updates.push(`steps = ${paramCounter}`);
+      updates.push(`steps = $${paramCounter}`);  // ← Fixed
       values.push(JSON.stringify(steps));
       paramCounter++;
     }
     if (expected_result !== undefined) {
-      updates.push(`expected_result = ${paramCounter}`);
+      updates.push(`expected_result = $${paramCounter}`);  // ← Fixed
       values.push(expected_result);
       paramCounter++;
     }
     if (tags !== undefined) {
-      updates.push(`tags = ${paramCounter}`);
+      updates.push(`tags = $${paramCounter}`);  // ← Fixed
       values.push(JSON.stringify(tags));
       paramCounter++;
     }
     if (custom_fields !== undefined) {
-      updates.push(`custom_fields = ${paramCounter}`);
+      updates.push(`custom_fields = $${paramCounter}`);  // ← Fixed
       values.push(JSON.stringify(custom_fields));
       paramCounter++;
     }

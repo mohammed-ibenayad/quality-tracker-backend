@@ -1,5 +1,5 @@
 -- ============================================
--- Quality Tracker Database Schema
+-- Quality Tracker Database Schema (Revised)
 -- PostgreSQL 15+ (also compatible with PostgreSQL 12+)
 -- ============================================
 
@@ -75,7 +75,8 @@ CREATE INDEX idx_workspace_members_role ON workspace_members(role);
 CREATE TYPE version_status AS ENUM ('Planned', 'In Development', 'In Testing', 'Released', 'Deprecated');
 
 CREATE TABLE versions (
-  id VARCHAR(50) PRIMARY KEY, -- User-defined like 'v1.0', 'v2.0'
+  ver_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- internal UUID PK
+  id VARCHAR(50) NOT NULL, -- business ID (e.g., 'v1.0')
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
   name VARCHAR(255) NOT NULL,
@@ -87,8 +88,8 @@ CREATE TABLE versions (
   actual_release_date DATE,
   
   -- Version Ordering
-  sort_order INTEGER, -- For custom ordering
-  is_default BOOLEAN DEFAULT false, -- Default selected version
+  sort_order INTEGER,
+  is_default BOOLEAN DEFAULT false,
   
   -- Metadata
   release_notes TEXT,
@@ -97,12 +98,16 @@ CREATE TABLE versions (
   updated_at TIMESTAMP DEFAULT NOW(),
   
   -- Custom Fields
-  custom_fields JSONB DEFAULT '{}'
+  custom_fields JSONB DEFAULT '{}',
+  
+  -- Enforce global uniqueness of business ID
+  UNIQUE (id)
 );
 
 CREATE INDEX idx_versions_workspace ON versions(workspace_id);
 CREATE INDEX idx_versions_status ON versions(status);
 CREATE INDEX idx_versions_sort ON versions(sort_order);
+CREATE INDEX idx_versions_id ON versions(id); -- for lookups by business ID
 CREATE UNIQUE INDEX idx_versions_default ON versions(workspace_id, is_default) WHERE is_default = true;
 
 -- ============================================
@@ -114,7 +119,8 @@ CREATE TYPE requirement_type AS ENUM ('Functional', 'Non-Functional', 'Security'
 CREATE TYPE requirement_status AS ENUM ('Draft', 'Active', 'In Review', 'Approved', 'Deprecated', 'Archived');
 
 CREATE TABLE requirements (
-  id VARCHAR(50) PRIMARY KEY, -- Keep user-defined IDs like 'REQ-001'
+  req_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- internal UUID PK
+  id VARCHAR(50) NOT NULL, -- business ID (e.g., 'REQ-001')
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
   -- Basic Info
@@ -124,28 +130,28 @@ CREATE TABLE requirements (
   type requirement_type NOT NULL DEFAULT 'Functional',
   status requirement_status NOT NULL DEFAULT 'Active',
   
-  -- Risk Factors (for Test Depth Factor calculation)
+  -- Risk Factors
   business_impact INTEGER CHECK (business_impact BETWEEN 1 AND 5),
   technical_complexity INTEGER CHECK (technical_complexity BETWEEN 1 AND 5),
   regulatory_factor INTEGER CHECK (regulatory_factor BETWEEN 1 AND 5),
   usage_frequency INTEGER CHECK (usage_frequency BETWEEN 1 AND 5),
   
-  -- Calculated Metrics (can be stored or computed on-the-fly)
-  test_depth_factor DECIMAL(3,1), -- Calculated from risk factors
-  min_test_cases INTEGER, -- Minimum tests required based on TDF
+  -- Calculated Metrics
+  test_depth_factor DECIMAL(3,1),
+  min_test_cases INTEGER,
   
   -- Ownership & Organization
-  owner VARCHAR(255), -- Team or person responsible
-  category VARCHAR(100), -- Custom categorization
-  tags JSONB DEFAULT '[]', -- Array of tags
+  owner VARCHAR(255),
+  category VARCHAR(100),
+  tags JSONB DEFAULT '[]',
   
   -- Traceability
-  parent_requirement_id VARCHAR(50) REFERENCES requirements(id), -- For hierarchical requirements
-  external_id VARCHAR(255), -- Link to external system (JIRA, ADO, etc.)
+  parent_requirement_id VARCHAR(50) REFERENCES requirements(id), -- still references business ID
+  external_id VARCHAR(255),
   external_url TEXT,
   
   -- Version Control
-  version_number VARCHAR(50), -- Internal version like '1.0', '2.0'
+  version_number VARCHAR(50),
   
   -- Metadata
   created_by UUID REFERENCES users(id),
@@ -153,8 +159,11 @@ CREATE TABLE requirements (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   
-  -- Custom Fields (for extensibility)
-  custom_fields JSONB DEFAULT '{}'
+  -- Custom Fields
+  custom_fields JSONB DEFAULT '{}',
+  
+  -- Enforce global uniqueness of business ID
+  UNIQUE (id)
 );
 
 CREATE INDEX idx_requirements_workspace ON requirements(workspace_id);
@@ -164,6 +173,7 @@ CREATE INDEX idx_requirements_type ON requirements(type);
 CREATE INDEX idx_requirements_owner ON requirements(owner);
 CREATE INDEX idx_requirements_parent ON requirements(parent_requirement_id);
 CREATE INDEX idx_requirements_tags ON requirements USING GIN(tags);
+CREATE INDEX idx_requirements_id ON requirements(id); -- for lookups by business ID
 
 -- ============================================
 -- REQUIREMENT-VERSION MAPPING
@@ -187,7 +197,8 @@ CREATE TYPE automation_status AS ENUM ('Automated', 'Manual', 'Semi-Automated', 
 CREATE TYPE test_priority AS ENUM ('Critical', 'High', 'Medium', 'Low');
 
 CREATE TABLE test_cases (
-  id VARCHAR(50) PRIMARY KEY, -- Keep user-defined IDs like 'TC-001'
+  tc_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- internal UUID PK
+  id VARCHAR(50) NOT NULL, -- business ID (e.g., 'TC-001')
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
   -- Basic Info
@@ -195,10 +206,10 @@ CREATE TABLE test_cases (
   description TEXT,
   
   -- Test Details
-  steps JSONB DEFAULT '[]', -- Array of test steps
+  steps JSONB DEFAULT '[]',
   expected_result TEXT,
-  preconditions TEXT, -- Prerequisites for running the test
-  test_data TEXT, -- Test data requirements
+  preconditions TEXT,
+  test_data TEXT,
   
   -- Categorization
   category VARCHAR(100),
@@ -207,14 +218,14 @@ CREATE TABLE test_cases (
   
   -- Automation
   automation_status automation_status NOT NULL DEFAULT 'Manual',
-  automation_path TEXT, -- Path to automation script
-  estimated_duration INTEGER, -- In minutes
+  automation_path TEXT,
+  estimated_duration INTEGER,
   
   -- Current Status
   status test_status NOT NULL DEFAULT 'Not Run',
   
   -- Ownership
-  assignee VARCHAR(255), -- Person or team assigned
+  assignee VARCHAR(255),
   created_by UUID REFERENCES users(id),
   updated_by UUID REFERENCES users(id),
   
@@ -226,7 +237,7 @@ CREATE TABLE test_cases (
   fail_count INTEGER DEFAULT 0,
   
   -- Traceability
-  external_id VARCHAR(255), -- Link to external test management system
+  external_id VARCHAR(255),
   external_url TEXT,
   
   -- Timestamps
@@ -234,7 +245,10 @@ CREATE TABLE test_cases (
   updated_at TIMESTAMP DEFAULT NOW(),
   
   -- Custom Fields
-  custom_fields JSONB DEFAULT '{}'
+  custom_fields JSONB DEFAULT '{}',
+  
+  -- Enforce global uniqueness of business ID
+  UNIQUE (id)
 );
 
 CREATE INDEX idx_test_cases_workspace ON test_cases(workspace_id);
@@ -244,9 +258,10 @@ CREATE INDEX idx_test_cases_priority ON test_cases(priority);
 CREATE INDEX idx_test_cases_category ON test_cases(category);
 CREATE INDEX idx_test_cases_assignee ON test_cases(assignee);
 CREATE INDEX idx_test_cases_tags ON test_cases USING GIN(tags);
+CREATE INDEX idx_test_cases_id ON test_cases(id); -- for lookups by business ID
 
 -- ============================================
--- TEST CASE-VERSION MAPPING (Flexible)
+-- TEST CASE-VERSION MAPPING
 -- ============================================
 
 CREATE TABLE test_case_versions (
@@ -266,7 +281,7 @@ CREATE TABLE requirement_test_mappings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   requirement_id VARCHAR(50) NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
   test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
-  coverage_type VARCHAR(50), -- e.g., 'direct', 'partial', 'integration'
+  coverage_type VARCHAR(50),
   created_at TIMESTAMP DEFAULT NOW(),
   created_by UUID REFERENCES users(id),
   UNIQUE(requirement_id, test_case_id)
@@ -285,38 +300,30 @@ CREATE TABLE test_execution_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
-  -- Execution Context
-  request_id VARCHAR(100) UNIQUE, -- External request ID from CI/CD
-  requirement_id VARCHAR(50) REFERENCES requirements(id),
-  version_id VARCHAR(50) REFERENCES versions(id),
+  request_id VARCHAR(100) UNIQUE,
+  requirement_id VARCHAR(50) REFERENCES requirements(id), -- business ID
+  version_id VARCHAR(50) REFERENCES versions(id),       -- business ID
   
-  -- Execution Details
   trigger_type execution_trigger NOT NULL,
   triggered_by UUID REFERENCES users(id),
   
-  -- Status Tracking
-  status VARCHAR(50) NOT NULL, -- 'running', 'completed', 'failed', 'cancelled'
+  status VARCHAR(50) NOT NULL,
   total_tests INTEGER,
   passed_tests INTEGER DEFAULT 0,
   failed_tests INTEGER DEFAULT 0,
   skipped_tests INTEGER DEFAULT 0,
   blocked_tests INTEGER DEFAULT 0,
   
-  -- Timing
   started_at TIMESTAMP NOT NULL,
   completed_at TIMESTAMP,
-  duration INTEGER, -- In milliseconds
+  duration INTEGER,
   
-  -- Environment
-  environment VARCHAR(100), -- 'dev', 'staging', 'production'
+  environment VARCHAR(100),
   build_number VARCHAR(100),
   commit_sha VARCHAR(100),
   branch VARCHAR(255),
   
-  -- Links
-  ci_cd_url TEXT, -- Link to CI/CD run (GitHub Actions, Jenkins, etc.)
-  
-  -- Summary
+  ci_cd_url TEXT,
   summary TEXT,
   metadata JSONB DEFAULT '{}',
   
@@ -338,40 +345,33 @@ CREATE TABLE test_results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   execution_run_id UUID REFERENCES test_execution_runs(id) ON DELETE CASCADE,
-  test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
+  test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE, -- business ID
   
-  -- Result Details
   status test_status NOT NULL,
-  duration INTEGER, -- In milliseconds
+  duration INTEGER,
   
-  -- Failure Information (when status = 'Failed')
-  failure_type VARCHAR(255), -- 'AssertionError', 'TimeoutException', etc.
+  failure_type VARCHAR(255),
   failure_message TEXT,
-  failure_category VARCHAR(100), -- 'assertion', 'timeout', 'element', etc.
-  failure_details JSONB, -- Structured failure data (expected, actual, stacktrace, etc.)
+  failure_category VARCHAR(100),
+  failure_details JSONB,
   
-  -- Execution Data
-  logs TEXT, -- Execution logs
-  raw_output TEXT, -- Raw output from test runner
-  screenshots JSONB DEFAULT '[]', -- Array of screenshot URLs
+  logs TEXT,
+  raw_output TEXT,
+  screenshots JSONB DEFAULT '[]',
   video_url TEXT,
   
-  -- Environment
-  executed_on VARCHAR(255), -- Machine/agent that ran the test
-  browser VARCHAR(100), -- For UI tests
+  executed_on VARCHAR(255),
+  browser VARCHAR(100),
   browser_version VARCHAR(50),
   os VARCHAR(100),
   
-  -- Timing
   started_at TIMESTAMP,
   completed_at TIMESTAMP,
   
-  -- Retry Information
   retry_count INTEGER DEFAULT 0,
   is_retry BOOLEAN DEFAULT false,
-  parent_result_id UUID REFERENCES test_results(id), -- For retries
+  parent_result_id UUID REFERENCES test_results(id),
   
-  -- Additional Context
   metadata JSONB DEFAULT '{}',
   
   created_at TIMESTAMP DEFAULT NOW()
@@ -396,22 +396,18 @@ CREATE TABLE audit_logs (
   workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id),
   
-  -- Action Details
   action audit_action NOT NULL,
   entity_type audit_entity NOT NULL,
-  entity_id VARCHAR(255) NOT NULL, -- ID of the affected entity
+  entity_id VARCHAR(255) NOT NULL,
   
-  -- Change Details
-  old_value JSONB, -- Previous state
-  new_value JSONB, -- New state
-  changes JSONB, -- Specific fields that changed
+  old_value JSONB,
+  new_value JSONB,
+  changes JSONB,
   
-  -- Context
   ip_address INET,
   user_agent TEXT,
-  description TEXT, -- Human-readable description
+  description TEXT,
   
-  -- Timestamp
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -429,18 +425,14 @@ CREATE TABLE comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
-  -- What is being commented on
-  entity_type VARCHAR(50) NOT NULL, -- 'requirement', 'test_case', 'execution'
+  entity_type VARCHAR(50) NOT NULL,
   entity_id VARCHAR(255) NOT NULL,
   
-  -- Comment Content
   content TEXT NOT NULL,
   author_id UUID NOT NULL REFERENCES users(id),
   
-  -- Threading
   parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
   
-  -- Metadata
   is_resolved BOOLEAN DEFAULT false,
   resolved_by UUID REFERENCES users(id),
   resolved_at TIMESTAMP,
@@ -462,16 +454,15 @@ CREATE INDEX idx_comments_created ON comments(created_at DESC);
 CREATE TABLE quality_gates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  version_id VARCHAR(50) REFERENCES versions(id),
+  version_id VARCHAR(50) REFERENCES versions(id), -- business ID
   
   name VARCHAR(255) NOT NULL,
   description TEXT,
   
-  -- Gate Criteria (stored as rules)
-  criteria JSONB NOT NULL, -- e.g., {"min_coverage": 80, "max_critical_failures": 0}
+  criteria JSONB NOT NULL,
   
   is_active BOOLEAN DEFAULT true,
-  is_blocking BOOLEAN DEFAULT false, -- If true, prevents release
+  is_blocking BOOLEAN DEFAULT false,
   
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(),
@@ -492,7 +483,7 @@ CREATE TABLE quality_gate_evaluations (
   execution_run_id UUID REFERENCES test_execution_runs(id),
   
   passed BOOLEAN NOT NULL,
-  results JSONB NOT NULL, -- Detailed evaluation results
+  results JSONB NOT NULL,
   
   evaluated_at TIMESTAMP DEFAULT NOW(),
   evaluated_by UUID REFERENCES users(id)
@@ -503,7 +494,7 @@ CREATE INDEX idx_gate_evaluations_run ON quality_gate_evaluations(execution_run_
 CREATE INDEX idx_gate_evaluations_date ON quality_gate_evaluations(evaluated_at DESC);
 
 -- ============================================
--- INTEGRATIONS (CI/CD, Issue Trackers, etc.)
+-- INTEGRATIONS
 -- ============================================
 
 CREATE TYPE integration_type AS ENUM ('github_actions', 'jenkins', 'jira', 'azure_devops', 'gitlab', 'slack', 'webhook');
@@ -515,12 +506,10 @@ CREATE TABLE integrations (
   type integration_type NOT NULL,
   name VARCHAR(255) NOT NULL,
   
-  -- Configuration (API keys, URLs, etc. - should be encrypted)
   config JSONB NOT NULL,
   
   is_active BOOLEAN DEFAULT true,
   
-  -- Metadata
   last_sync TIMESTAMP,
   sync_status VARCHAR(50),
   
@@ -537,16 +526,14 @@ CREATE INDEX idx_integrations_active ON integrations(is_active);
 -- TRIGGERS FOR UPDATED_AT TIMESTAMPS
 -- ============================================
 
--- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE 'plpgsql';
 
--- Apply trigger to tables with updated_at column
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -630,7 +617,7 @@ CREATE TABLE schema_version (
 );
 
 INSERT INTO schema_version (version, description) 
-VALUES ('1.0.0', 'Initial schema with full test tracking support');
+VALUES ('1.1.0', 'Added internal UUID PKs (req_uuid, tc_uuid, ver_uuid); kept business id as unique');
 
 -- ============================================
 -- COMPLETION MESSAGE
@@ -641,5 +628,5 @@ BEGIN
   RAISE NOTICE '✅ Schema creation completed successfully!';
   RAISE NOTICE '📊 Created % tables', (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE');
   RAISE NOTICE '🔍 Created % views', (SELECT COUNT(*) FROM information_schema.views WHERE table_schema = 'public');
-  RAISE NOTICE '🎯 Quality Tracker database is ready!';
+  RAISE NOTICE '🎯 Quality Tracker database is ready with internal UUIDs!';
 END $$;

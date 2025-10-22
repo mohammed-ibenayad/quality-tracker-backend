@@ -8,7 +8,7 @@ const getAllRequirements = async (req, res) => {
   try {
     // ✅ REQUIRE workspace_id - no default fallback
     const workspaceId = req.query.workspace_id;
-    
+
     if (!workspaceId) {
       return res.status(400).json({
         success: false,
@@ -28,7 +28,7 @@ const getAllRequirements = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
+
     const result = await db.query(`
       SELECT 
         r.*,
@@ -96,19 +96,9 @@ const getRequirementById = async (req, res) => {
             DISTINCT rv.version_id
           ) FILTER (WHERE rv.version_id IS NOT NULL),
           '[]'
-        ) as versions,
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'test_case_id', rtm.test_case_id,
-              'status', rtm.status
-            )
-          ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
-          '[]'
-        ) as test_cases
+        ) as versions
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
-      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
       WHERE r.id = $1 AND r.workspace_id = $2
       GROUP BY r.id
     `, [id, workspaceId]);
@@ -170,14 +160,29 @@ const createRequirement = async (req, res) => {
     }
 
     const {
+      id,                          // ✅ ADD THIS
       name,
       description = '',
-      type = 'Functional',      // ✅ FIXED: Capitalized
-      priority = 'Medium',       // ✅ FIXED: Capitalized
-      status = 'Active',         // ✅ FIXED: Capitalized (changed from 'Draft')
+      type = 'Functional',
+      priority = 'Medium',
+      status = 'Active',
+      businessImpact = null,       // ✅ ADD THIS
+      technicalComplexity = null,  // ✅ ADD THIS
+      regulatoryFactor = null,     // ✅ ADD THIS
+      usageFrequency = null,       // ✅ ADD THIS
+      testDepthFactor = null,      // ✅ ADD THIS
+      minTestCases = null,         // ✅ ADD THIS
       tags = [],
       custom_fields = {}
     } = req.body;
+
+    // ✅ Validate required fields
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Requirement ID is required'
+      });
+    }
 
     if (!name) {
       return res.status(400).json({
@@ -188,10 +193,17 @@ const createRequirement = async (req, res) => {
 
     const result = await db.query(`
       INSERT INTO requirements (
-        workspace_id, name, description, type, priority, status, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        id, workspace_id, name, description, type, priority, status, 
+        business_impact, technical_complexity, regulatory_factor, usage_frequency,
+        test_depth_factor, min_test_cases, tags, custom_fields, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
-    `, [workspaceId, name, description, type, priority, status, JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id]);
+    `, [
+      id, workspaceId, name, description, type, priority, status,
+      businessImpact, technicalComplexity, regulatoryFactor, usageFrequency,
+      testDepthFactor, minTestCases,
+      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+    ]);
 
     res.status(201).json({
       success: true,
@@ -264,7 +276,13 @@ const updateRequirement = async (req, res) => {
       priority,
       status,
       tags,
-      custom_fields
+      custom_fields,
+      businessImpact,
+      technicalComplexity,
+      regulatoryFactor,
+      usageFrequency,
+      testDepthFactor,
+      minTestCases
     } = req.body;
 
     const updates = [];
@@ -304,6 +322,38 @@ const updateRequirement = async (req, res) => {
     if (custom_fields !== undefined) {
       updates.push(`custom_fields = $${paramCounter}`);
       values.push(JSON.stringify(custom_fields));
+      paramCounter++;
+    }
+    
+    // ✅ Use the destructured variables, not req.body.xxx
+    if (businessImpact !== undefined) {
+      updates.push(`business_impact = $${paramCounter}`);
+      values.push(businessImpact);
+      paramCounter++;
+    }
+    if (technicalComplexity !== undefined) {
+      updates.push(`technical_complexity = $${paramCounter}`);
+      values.push(technicalComplexity);
+      paramCounter++;
+    }
+    if (regulatoryFactor !== undefined) {
+      updates.push(`regulatory_factor = $${paramCounter}`);
+      values.push(regulatoryFactor);
+      paramCounter++;
+    }
+    if (usageFrequency !== undefined) {
+      updates.push(`usage_frequency = $${paramCounter}`);
+      values.push(usageFrequency);
+      paramCounter++;
+    }
+    if (testDepthFactor !== undefined) {
+      updates.push(`test_depth_factor = $${paramCounter}`);
+      values.push(testDepthFactor);
+      paramCounter++;
+    }
+    if (minTestCases !== undefined) {
+      updates.push(`min_test_cases = $${paramCounter}`);
+      values.push(minTestCases);
       paramCounter++;
     }
 

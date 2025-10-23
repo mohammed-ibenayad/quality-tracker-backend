@@ -93,8 +93,7 @@ const requireWorkspaceRole = (allowedRoles = []) => {
       }
 
       // Get workspace_id from query, body, or params
-      const workspaceId = req.query.workspace_id || req.body.workspace_id || req.params.workspace_id;
-
+      const workspaceId = req.query.workspace_id || req.body.workspace_id || req.params.workspace_id || req.params.id;
       if (!workspaceId) {
         return res.status(400).json({
           success: false,

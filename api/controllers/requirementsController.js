@@ -2,11 +2,10 @@ const db = require('../../database/connection');
 
 /**
  * Get all requirements for a workspace
- * ✅ FIXED: Updated GROUP BY to use req_uuid (UUID primary key)
+ * ✅ FIXED: Includes versions array from requirement_versions junction table
  */
 const getAllRequirements = async (req, res) => {
   try {
-    // ✅ REQUIRE workspace_id - no default fallback
     const workspaceId = req.query.workspace_id;
 
     if (!workspaceId) {
@@ -16,7 +15,7 @@ const getAllRequirements = async (req, res) => {
       });
     }
 
-    // ✅ Verify user has access to this workspace
+    // Verify user has access to this workspace
     const accessCheck = await db.query(`
       SELECT role FROM workspace_members
       WHERE workspace_id = $1 AND user_id = $2
@@ -29,6 +28,7 @@ const getAllRequirements = async (req, res) => {
       });
     }
 
+    // ✅ Join with requirement_versions to get versions array
     const result = await db.query(`
       SELECT 
         r.*,
@@ -62,7 +62,7 @@ const getAllRequirements = async (req, res) => {
 
 /**
  * Get single requirement by ID
- * ✅ FIXED: Updated GROUP BY to use req_uuid (UUID primary key)
+ * ✅ FIXED: Includes versions array from requirement_versions junction table
  */
 const getRequirementById = async (req, res) => {
   try {
@@ -89,6 +89,7 @@ const getRequirementById = async (req, res) => {
       });
     }
     
+    // ✅ Join with requirement_versions to get versions array
     const result = await db.query(`
       SELECT 
         r.*,
@@ -174,7 +175,8 @@ const createRequirement = async (req, res) => {
       testDepthFactor = null,
       minTestCases = null,
       tags = [],
-      custom_fields = {}
+      custom_fields = {},
+      versions = [] // ✅ ADD THIS
     } = req.body;
 
     if (!id) {
@@ -191,25 +193,70 @@ const createRequirement = async (req, res) => {
       });
     }
 
-    const result = await db.query(`
-      INSERT INTO requirements (
-        id, workspace_id, name, description, type, priority, status, 
-        business_impact, technical_complexity, regulatory_factor, usage_frequency,
-        test_depth_factor, min_test_cases, tags, custom_fields, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      RETURNING *
-    `, [
-      id, workspaceId, name, description, type, priority, status,
-      businessImpact, technicalComplexity, regulatoryFactor, usageFrequency,
-      testDepthFactor, minTestCases,
-      JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
-    ]);
+    // ✅ Use a transaction to create requirement and version mappings
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    res.status(201).json({
-      success: true,
-      message: 'Requirement created successfully',
-      data: result.rows[0]
-    });
+      // Create the requirement
+      const result = await client.query(`
+        INSERT INTO requirements (
+          id, workspace_id, name, description, type, priority, status, 
+          business_impact, technical_complexity, regulatory_factor, usage_frequency,
+          test_depth_factor, min_test_cases, tags, custom_fields, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        RETURNING *
+      `, [
+        id, workspaceId, name, description, type, priority, status,
+        businessImpact, technicalComplexity, regulatoryFactor, usageFrequency,
+        testDepthFactor, minTestCases,
+        JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
+      ]);
+
+      // ✅ Insert version mappings if provided
+      if (versions && Array.isArray(versions) && versions.length > 0) {
+        for (const versionId of versions) {
+          try {
+            await client.query(`
+              INSERT INTO requirement_versions (requirement_id, version_id)
+              VALUES ($1, $2)
+              ON CONFLICT (requirement_id, version_id) DO NOTHING
+            `, [id, versionId]);
+          } catch (error) {
+            console.warn(`Failed to link requirement ${id} to version ${versionId}:`, error.message);
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Fetch the complete requirement with versions
+      const completeResult = await client.query(`
+        SELECT 
+          r.*,
+          COALESCE(
+            json_agg(
+              DISTINCT rv.version_id
+            ) FILTER (WHERE rv.version_id IS NOT NULL),
+            '[]'
+          ) as versions
+        FROM requirements r
+        LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
+        WHERE r.id = $1
+        GROUP BY r.req_uuid
+      `, [id]);
+
+      res.status(201).json({
+        success: true,
+        message: 'Requirement created successfully',
+        data: completeResult.rows[0]
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('Error creating requirement:', error);
     res.status(500).json({
@@ -222,6 +269,7 @@ const createRequirement = async (req, res) => {
 
 /**
  * Update requirement
+ * ✅ FIXED: Now handles versions array updates
  */
 const updateRequirement = async (req, res) => {
   try {
@@ -282,7 +330,8 @@ const updateRequirement = async (req, res) => {
       regulatoryFactor,
       usageFrequency,
       testDepthFactor,
-      minTestCases
+      minTestCases,
+      versions // ✅ ADD THIS
     } = req.body;
 
     const updates = [];
@@ -324,7 +373,6 @@ const updateRequirement = async (req, res) => {
       values.push(JSON.stringify(custom_fields));
       paramCounter++;
     }
-    
     if (businessImpact !== undefined) {
       updates.push(`business_impact = $${paramCounter}`);
       values.push(businessImpact);
@@ -356,26 +404,65 @@ const updateRequirement = async (req, res) => {
       paramCounter++;
     }
 
-    if (updates.length === 0) {
+    if (updates.length === 0 && versions === undefined) {
       return res.status(400).json({
         success: false,
         error: 'No valid fields to update'
       });
     }
 
-    values.push(id);
-    values.push(workspaceId);
+    // ✅ Use a transaction to update both requirement and version mappings
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await db.query(`
-      UPDATE requirements
-      SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE id = $${paramCounter} AND workspace_id = $${paramCounter + 1}
-    `, values);
+      // Update requirement fields if there are any
+      if (updates.length > 0) {
+        values.push(id);
+        values.push(workspaceId);
 
-    res.json({
-      success: true,
-      message: 'Requirement updated successfully'
-    });
+        await client.query(`
+          UPDATE requirements
+          SET ${updates.join(', ')}, updated_at = NOW(), updated_by = $${paramCounter + 2}
+          WHERE id = $${paramCounter} AND workspace_id = $${paramCounter + 1}
+        `, [...values, req.user.id]);
+      }
+
+      // ✅ Handle version assignments if provided
+      if (versions !== undefined && Array.isArray(versions)) {
+        // Delete existing version mappings
+        await client.query(
+          'DELETE FROM requirement_versions WHERE requirement_id = $1',
+          [id]
+        );
+
+        // Insert new version mappings
+        for (const versionId of versions) {
+          try {
+            await client.query(`
+              INSERT INTO requirement_versions (requirement_id, version_id)
+              VALUES ($1, $2)
+              ON CONFLICT (requirement_id, version_id) DO NOTHING
+            `, [id, versionId]);
+          } catch (error) {
+            console.warn(`Failed to link requirement ${id} to version ${versionId}:`, error.message);
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Requirement updated successfully'
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
   } catch (error) {
     console.error('Error updating requirement:', error);
     res.status(500).json({
@@ -422,6 +509,7 @@ const deleteRequirement = async (req, res) => {
       });
     }
 
+    // Delete will cascade to requirement_versions due to foreign key
     await db.query(
       'DELETE FROM requirements WHERE id = $1 AND workspace_id = $2',
       [id, workspaceId]

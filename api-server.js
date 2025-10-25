@@ -10,6 +10,7 @@ const db = require('./database/connection');
 const authRoutes = require('./api/routes/auth'); // NEW - Authentication routes
 const requirementsRoutes = require('./api/routes/requirements');
 const testCasesRoutes = require('./api/routes/testCases');
+const testSuitesRoutes = require('./api/routes/testSuites');
 const versionsRoutes = require('./api/routes/versions');
 const mappingsRoutes = require('./api/routes/mappings');
 const workspacesRoutes = require('./api/routes/workspaces'); // Workspace routes
@@ -93,13 +94,14 @@ app.get('/api/health', async (req, res) => {
 });
 
 // API Routes
-app.use('/api/auth', authRoutes); // NEW - Authentication routes
+app.use('/api/auth', authRoutes);
 app.use('/api/requirements', requirementsRoutes);
 app.use('/api/test-cases', testCasesRoutes);
+app.use('/api/test-suites', testSuitesRoutes);
 app.use('/api/versions', versionsRoutes);
 app.use('/api/mappings', mappingsRoutes);
 app.use('/api/import', importRoutes);
-app.use('/api/workspaces', workspacesRoutes); // Workspace routes
+app.use('/api/workspaces', workspacesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -111,6 +113,7 @@ app.get('/', (req, res) => {
       health: '/api/health',
       requirements: '/api/requirements',
       testCases: '/api/test-cases',
+      testSuites: '/api/test-suites',
       versions: '/api/versions',
       mappings: '/api/mappings',
       import: '/api/import',

@@ -291,6 +291,60 @@ CREATE INDEX idx_req_test_mapping_requirement ON requirement_test_mappings(requi
 CREATE INDEX idx_req_test_mapping_test ON requirement_test_mappings(test_case_id);
 
 -- ============================================
+-- TEST SUITE DEFINITIONS
+-- ============================================
+
+CREATE TABLE test_suite_definitions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- ✅ ADDED: Auto-generate UUIDs
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, -- ✅ ADDED: CASCADE delete
+  
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  version VARCHAR(50),
+  suite_type VARCHAR(50), -- 'smoke', 'regression', 'sanity', 'integration', 'custom'
+  
+  -- Design metadata
+  estimated_duration INTEGER, -- in minutes
+  recommended_environment VARCHAR(100),
+  
+  -- Audit fields (RECOMMENDED)
+  created_by UUID REFERENCES users(id), -- ✅ ADDED: Track who created
+  updated_by UUID REFERENCES users(id), -- ✅ ADDED: Track who updated
+  created_at TIMESTAMP DEFAULT NOW(), -- ✅ ADDED: Default to now
+  updated_at TIMESTAMP DEFAULT NOW(), -- ✅ ADDED: Track updates
+  
+  is_active BOOLEAN DEFAULT true
+);
+
+-- Indexes for performance
+CREATE INDEX idx_test_suite_defs_workspace ON test_suite_definitions(workspace_id);
+CREATE INDEX idx_test_suite_defs_type ON test_suite_definitions(suite_type);
+CREATE INDEX idx_test_suite_defs_active ON test_suite_definitions(is_active);
+
+-- ============================================
+-- TEST SUITE MEMBERS
+-- ============================================
+
+CREATE TABLE test_suite_members (
+  suite_id UUID REFERENCES test_suite_definitions(id) ON DELETE CASCADE, -- ✅ ADDED: CASCADE delete
+  test_case_id VARCHAR(50) REFERENCES test_cases(id) ON DELETE CASCADE, -- ✅ ADDED: CASCADE delete
+  
+  execution_order INTEGER DEFAULT 0, -- ✅ ADDED: Default value
+  is_mandatory BOOLEAN DEFAULT true,
+  
+  -- Audit (OPTIONAL but useful)
+  added_at TIMESTAMP DEFAULT NOW(), -- ✅ ADDED: Track when added
+  added_by UUID REFERENCES users(id), -- ✅ ADDED: Track who added
+  
+  PRIMARY KEY (suite_id, test_case_id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_suite_members_suite ON test_suite_members(suite_id);
+CREATE INDEX idx_suite_members_test ON test_suite_members(test_case_id);
+CREATE INDEX idx_suite_members_order ON test_suite_members(suite_id, execution_order);
+
+-- ============================================
 -- TEST EXECUTION RUNS
 -- ============================================
 
@@ -303,6 +357,10 @@ CREATE TABLE test_execution_runs (
   request_id VARCHAR(100) UNIQUE,
   requirement_id VARCHAR(50) REFERENCES requirements(id), -- business ID
   version_id VARCHAR(50) REFERENCES versions(id),       -- business ID
+
+  suite_definition_id UUID REFERENCES test_suite_definitions(id),
+  suite_name VARCHAR(255),
+  suite_version VARCHAR(50),
   
   trigger_type execution_trigger NOT NULL,
   triggered_by UUID REFERENCES users(id),
@@ -330,12 +388,14 @@ CREATE TABLE test_execution_runs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE INDEX idx_execution_runs_suite ON test_execution_runs(suite_definition_id);
 CREATE INDEX idx_execution_runs_workspace ON test_execution_runs(workspace_id);
 CREATE INDEX idx_execution_runs_request ON test_execution_runs(request_id);
 CREATE INDEX idx_execution_runs_requirement ON test_execution_runs(requirement_id);
 CREATE INDEX idx_execution_runs_version ON test_execution_runs(version_id);
 CREATE INDEX idx_execution_runs_status ON test_execution_runs(status);
 CREATE INDEX idx_execution_runs_started ON test_execution_runs(started_at DESC);
+
 
 -- ============================================
 -- INDIVIDUAL TEST RESULTS
@@ -558,6 +618,9 @@ CREATE TRIGGER update_quality_gates_updated_at BEFORE UPDATE ON quality_gates
 CREATE TRIGGER update_integrations_updated_at BEFORE UPDATE ON integrations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_test_suite_defs_updated_at BEFORE UPDATE ON test_suite_definitions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================
 -- HELPFUL VIEWS
 -- ============================================
@@ -605,6 +668,30 @@ FROM test_execution_runs ter
 LEFT JOIN users u ON ter.triggered_by = u.id
 ORDER BY ter.started_at DESC
 LIMIT 100;
+
+CREATE OR REPLACE VIEW test_suite_summary AS
+SELECT 
+    tsd.id,
+    tsd.workspace_id,
+    tsd.name,
+    tsd.version,
+    tsd.suite_type,
+    tsd.description,
+    tsd.estimated_duration,
+    tsd.recommended_environment,
+    tsd.is_active,
+    COUNT(tsm.test_case_id) as total_tests,
+    COUNT(CASE WHEN tc.automation_status = 'Automated' THEN 1 END) as automated_tests,
+    tsd.created_at,
+    tsd.updated_at,
+    u.full_name as created_by_name
+FROM test_suite_definitions tsd
+LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
+LEFT JOIN test_cases tc ON tsm.test_case_id = tc.id
+LEFT JOIN users u ON tsd.created_by = u.id
+GROUP BY tsd.id, tsd.workspace_id, tsd.name, tsd.version, tsd.suite_type,
+         tsd.description, tsd.estimated_duration, tsd.recommended_environment,
+         tsd.is_active, tsd.created_at, tsd.updated_at, u.full_name;
 
 -- ============================================
 -- SCHEMA VERSION TRACKING

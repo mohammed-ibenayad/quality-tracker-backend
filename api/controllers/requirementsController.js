@@ -28,7 +28,7 @@ const getAllRequirements = async (req, res) => {
       });
     }
 
-    // ✅ Join with requirement_versions to get versions array
+    // ✅ FIXED: Join with BOTH requirement_versions AND requirement_test_mappings
     const result = await db.query(`
       SELECT 
         r.*,
@@ -37,9 +37,16 @@ const getAllRequirements = async (req, res) => {
             DISTINCT rv.version_id
           ) FILTER (WHERE rv.version_id IS NOT NULL),
           '[]'
-        ) as versions
+        ) as versions,
+        COALESCE(
+          json_agg(
+            DISTINCT rtm.test_case_id
+          ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
+          '[]'
+        ) as test_case_ids
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
+      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
       WHERE r.workspace_id = $1
       GROUP BY r.req_uuid
       ORDER BY r.created_at DESC
@@ -88,8 +95,8 @@ const getRequirementById = async (req, res) => {
         error: 'Access denied to this workspace'
       });
     }
-    
-    // ✅ Join with requirement_versions to get versions array
+
+    // ✅ FIXED: Join with BOTH requirement_versions AND requirement_test_mappings
     const result = await db.query(`
       SELECT 
         r.*,
@@ -98,9 +105,16 @@ const getRequirementById = async (req, res) => {
             DISTINCT rv.version_id
           ) FILTER (WHERE rv.version_id IS NOT NULL),
           '[]'
-        ) as versions
+        ) as versions,
+        COALESCE(
+          json_agg(
+            DISTINCT rtm.test_case_id
+          ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
+          '[]'
+        ) as test_case_ids
       FROM requirements r
       LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
+      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
       WHERE r.id = $1 AND r.workspace_id = $2
       GROUP BY r.req_uuid
     `, [id, workspaceId]);
@@ -125,6 +139,7 @@ const getRequirementById = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Create new requirement

@@ -45,8 +45,8 @@ const getAllRequirements = async (req, res) => {
           '[]'
         ) as test_case_ids
       FROM requirements r
-      LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
-      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
+      LEFT JOIN requirement_versions rv ON r.req_uuid = rv.requirement_id
+      LEFT JOIN requirement_test_mappings rtm ON r.req_uuid = rtm.requirement_id
       WHERE r.workspace_id = $1
       GROUP BY r.req_uuid
       ORDER BY r.created_at DESC
@@ -319,25 +319,14 @@ const updateRequirement = async (req, res) => {
       });
     }
 
-    // Verify requirement belongs to workspace
-    const reqCheck = await db.query(
-      'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
-      [id, workspaceId]
-    );
-
-    if (reqCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Requirement not found in this workspace'
-      });
-    }
-
     const {
       name,
       description,
       type,
       priority,
       status,
+      owner,
+      category,
       tags,
       custom_fields,
       businessImpact,
@@ -346,121 +335,153 @@ const updateRequirement = async (req, res) => {
       usageFrequency,
       testDepthFactor,
       minTestCases,
-      versions // ✅ ADD THIS
+      versions
     } = req.body;
 
-    const updates = [];
-    const values = [];
-    let paramCounter = 1;
-
-    if (name !== undefined) {
-      updates.push(`name = $${paramCounter}`);
-      values.push(name);
-      paramCounter++;
-    }
-    if (description !== undefined) {
-      updates.push(`description = $${paramCounter}`);
-      values.push(description);
-      paramCounter++;
-    }
-    if (type !== undefined) {
-      updates.push(`type = $${paramCounter}`);
-      values.push(type);
-      paramCounter++;
-    }
-    if (priority !== undefined) {
-      updates.push(`priority = $${paramCounter}`);
-      values.push(priority);
-      paramCounter++;
-    }
-    if (status !== undefined) {
-      updates.push(`status = $${paramCounter}`);
-      values.push(status);
-      paramCounter++;
-    }
-    if (tags !== undefined) {
-      updates.push(`tags = $${paramCounter}`);
-      values.push(JSON.stringify(tags));
-      paramCounter++;
-    }
-    if (custom_fields !== undefined) {
-      updates.push(`custom_fields = $${paramCounter}`);
-      values.push(JSON.stringify(custom_fields));
-      paramCounter++;
-    }
-    if (businessImpact !== undefined) {
-      updates.push(`business_impact = $${paramCounter}`);
-      values.push(businessImpact);
-      paramCounter++;
-    }
-    if (technicalComplexity !== undefined) {
-      updates.push(`technical_complexity = $${paramCounter}`);
-      values.push(technicalComplexity);
-      paramCounter++;
-    }
-    if (regulatoryFactor !== undefined) {
-      updates.push(`regulatory_factor = $${paramCounter}`);
-      values.push(regulatoryFactor);
-      paramCounter++;
-    }
-    if (usageFrequency !== undefined) {
-      updates.push(`usage_frequency = $${paramCounter}`);
-      values.push(usageFrequency);
-      paramCounter++;
-    }
-    if (testDepthFactor !== undefined) {
-      updates.push(`test_depth_factor = $${paramCounter}`);
-      values.push(testDepthFactor);
-      paramCounter++;
-    }
-    if (minTestCases !== undefined) {
-      updates.push(`min_test_cases = $${paramCounter}`);
-      values.push(minTestCases);
-      paramCounter++;
-    }
-
-    if (updates.length === 0 && versions === undefined) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid fields to update'
-      });
-    }
-
-    // ✅ Use a transaction to update both requirement and version mappings
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
+
+      // ✅ Get req_uuid for the requirement being updated
+      const reqUuidResult = await client.query(
+        'SELECT req_uuid FROM requirements WHERE id = $1 AND workspace_id = $2',
+        [id, workspaceId]
+      );
+
+      if (reqUuidResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          error: 'Requirement not found'
+        });
+      }
+
+      const req_uuid = reqUuidResult.rows[0].req_uuid;
+
+      // Build dynamic update query
+      const updates = [];
+      const values = [];
+      let paramCounter = 1;
+
+      if (name !== undefined) {
+        updates.push(`name = $${paramCounter}`);
+        values.push(name);
+        paramCounter++;
+      }
+      if (description !== undefined) {
+        updates.push(`description = $${paramCounter}`);
+        values.push(description);
+        paramCounter++;
+      }
+      if (type !== undefined) {
+        updates.push(`type = $${paramCounter}`);
+        values.push(type);
+        paramCounter++;
+      }
+      if (priority !== undefined) {
+        updates.push(`priority = $${paramCounter}`);
+        values.push(priority);
+        paramCounter++;
+      }
+      if (status !== undefined) {
+        updates.push(`status = $${paramCounter}`);
+        values.push(status);
+        paramCounter++;
+      }
+      if (owner !== undefined) {
+        updates.push(`owner = $${paramCounter}`);
+        values.push(owner);
+        paramCounter++;
+      }
+      if (category !== undefined) {
+        updates.push(`category = $${paramCounter}`);
+        values.push(category);
+        paramCounter++;
+      }
+      if (tags !== undefined) {
+        updates.push(`tags = $${paramCounter}`);
+        values.push(JSON.stringify(tags));
+        paramCounter++;
+      }
+      if (custom_fields !== undefined) {
+        updates.push(`custom_fields = $${paramCounter}`);
+        values.push(JSON.stringify(custom_fields));
+        paramCounter++;
+      }
+      if (businessImpact !== undefined) {
+        updates.push(`business_impact = $${paramCounter}`);
+        values.push(businessImpact);
+        paramCounter++;
+      }
+      if (technicalComplexity !== undefined) {
+        updates.push(`technical_complexity = $${paramCounter}`);
+        values.push(technicalComplexity);
+        paramCounter++;
+      }
+      if (regulatoryFactor !== undefined) {
+        updates.push(`regulatory_factor = $${paramCounter}`);
+        values.push(regulatoryFactor);
+        paramCounter++;
+      }
+      if (usageFrequency !== undefined) {
+        updates.push(`usage_frequency = $${paramCounter}`);
+        values.push(usageFrequency);
+        paramCounter++;
+      }
+      if (testDepthFactor !== undefined) {
+        updates.push(`test_depth_factor = $${paramCounter}`);
+        values.push(testDepthFactor);
+        paramCounter++;
+      }
+      if (minTestCases !== undefined) {
+        updates.push(`min_test_cases = $${paramCounter}`);
+        values.push(minTestCases);
+        paramCounter++;
+      }
 
       // Update requirement fields if there are any
       if (updates.length > 0) {
         values.push(id);
         values.push(workspaceId);
+        values.push(req.user.id);
 
         await client.query(`
           UPDATE requirements
           SET ${updates.join(', ')}, updated_at = NOW(), updated_by = $${paramCounter + 2}
           WHERE id = $${paramCounter} AND workspace_id = $${paramCounter + 1}
-        `, [...values, req.user.id]);
+        `, values);
       }
 
-      // ✅ Handle version assignments if provided
+      // ✅ Handle version assignments with UUID conversion
       if (versions !== undefined && Array.isArray(versions)) {
-        // Delete existing version mappings
+        // Delete existing version mappings using req_uuid
         await client.query(
           'DELETE FROM requirement_versions WHERE requirement_id = $1',
-          [id]
+          [req_uuid]
         );
 
         // Insert new version mappings
-        for (const versionId of versions) {
-          try {
-            await client.query(`
-              INSERT INTO requirement_versions (requirement_id, version_id)
-              VALUES ($1, $2)
-              ON CONFLICT (requirement_id, version_id) DO NOTHING
-            `, [id, versionId]);
-          } catch (error) {
-            console.warn(`Failed to link requirement ${id} to version ${versionId}:`, error.message);
+        if (versions.length > 0) {
+          for (const versionId of versions) {
+            try {
+              // Get version UUID from business ID
+              const verUuidResult = await client.query(
+                'SELECT ver_uuid FROM versions WHERE id = $1',
+                [versionId]
+              );
+
+              if (verUuidResult.rows.length > 0) {
+                const ver_uuid = verUuidResult.rows[0].ver_uuid;
+
+                await client.query(`
+                  INSERT INTO requirement_versions (requirement_id, version_id)
+                  VALUES ($1, $2)
+                  ON CONFLICT (requirement_id, version_id) DO NOTHING
+                `, [req_uuid, ver_uuid]);
+              }
+            } catch (error) {
+              console.warn(`Failed to link requirement ${id} to version ${versionId}:`, error.message);
+            }
           }
         }
       }
@@ -477,7 +498,6 @@ const updateRequirement = async (req, res) => {
     } finally {
       client.release();
     }
-
   } catch (error) {
     console.error('Error updating requirement:', error);
     res.status(500).json({

@@ -119,8 +119,8 @@ CREATE TYPE requirement_type AS ENUM ('Functional', 'Non-Functional', 'Security'
 CREATE TYPE requirement_status AS ENUM ('Draft', 'Active', 'In Review', 'Approved', 'Deprecated', 'Archived');
 
 CREATE TABLE requirements (
-  req_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- internal UUID PK
-  id VARCHAR(50) NOT NULL, -- business ID (e.g., 'REQ-001')
+  req_uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id VARCHAR(50) NOT NULL,
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
   -- Basic Info
@@ -146,7 +146,7 @@ CREATE TABLE requirements (
   tags JSONB DEFAULT '[]',
   
   -- Traceability
-  parent_requirement_id VARCHAR(50) REFERENCES requirements(id), -- still references business ID
+  parent_requirement_id UUID REFERENCES requirements(req_uuid),
   external_id VARCHAR(255),
   external_url TEXT,
   
@@ -163,7 +163,7 @@ CREATE TABLE requirements (
   custom_fields JSONB DEFAULT '{}',
   
   -- Enforce global uniqueness of business ID
-  UNIQUE (id, workspace_id)
+  UNIQUE (id)
 );
 
 CREATE INDEX idx_requirements_workspace ON requirements(workspace_id);
@@ -180,8 +180,8 @@ CREATE INDEX idx_requirements_id ON requirements(id); -- for lookups by business
 -- ============================================
 
 CREATE TABLE requirement_versions (
-  requirement_id VARCHAR(50) NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
-  version_id VARCHAR(50) NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+  requirement_id UUID NOT NULL REFERENCES requirements(req_uuid) ON DELETE CASCADE,
+  version_id UUID NOT NULL REFERENCES versions(ver_uuid) ON DELETE CASCADE,
   PRIMARY KEY (requirement_id, version_id)
 );
 
@@ -265,8 +265,8 @@ CREATE INDEX idx_test_cases_id ON test_cases(id); -- for lookups by business ID
 -- ============================================
 
 CREATE TABLE test_case_versions (
-  test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
-  version_id VARCHAR(50) NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+  test_case_id UUID NOT NULL REFERENCES test_cases(tc_uuid) ON DELETE CASCADE,
+  version_id UUID NOT NULL REFERENCES versions(ver_uuid) ON DELETE CASCADE,
   PRIMARY KEY (test_case_id, version_id)
 );
 
@@ -279,8 +279,8 @@ CREATE INDEX idx_test_case_versions_version ON test_case_versions(version_id);
 
 CREATE TABLE requirement_test_mappings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  requirement_id VARCHAR(50) NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
-  test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
+  requirement_id UUID NOT NULL REFERENCES requirements(req_uuid) ON DELETE CASCADE,
+  test_case_id UUID NOT NULL REFERENCES test_cases(tc_uuid) ON DELETE CASCADE,
   coverage_type VARCHAR(50),
   created_at TIMESTAMP DEFAULT NOW(),
   created_by UUID REFERENCES users(id),
@@ -326,20 +326,15 @@ CREATE INDEX idx_test_suite_defs_active ON test_suite_definitions(is_active);
 -- ============================================
 
 CREATE TABLE test_suite_members (
-  suite_id UUID REFERENCES test_suite_definitions(id) ON DELETE CASCADE, -- ✅ ADDED: CASCADE delete
-  test_case_id VARCHAR(50) REFERENCES test_cases(id) ON DELETE CASCADE, -- ✅ ADDED: CASCADE delete
-  
-  execution_order INTEGER DEFAULT 0, -- ✅ ADDED: Default value
+  suite_id UUID REFERENCES test_suite_definitions(id) ON DELETE CASCADE,
+  test_case_id UUID REFERENCES test_cases(tc_uuid) ON DELETE CASCADE,
+  execution_order INTEGER DEFAULT 0,
   is_mandatory BOOLEAN DEFAULT true,
-  
-  -- Audit (OPTIONAL but useful)
-  added_at TIMESTAMP DEFAULT NOW(), -- ✅ ADDED: Track when added
-  added_by UUID REFERENCES users(id), -- ✅ ADDED: Track who added
-  
+  added_at TIMESTAMP DEFAULT NOW(),
+  added_by UUID REFERENCES users(id),
   PRIMARY KEY (suite_id, test_case_id)
 );
 
--- Indexes for performance
 CREATE INDEX idx_suite_members_suite ON test_suite_members(suite_id);
 CREATE INDEX idx_suite_members_test ON test_suite_members(test_case_id);
 CREATE INDEX idx_suite_members_order ON test_suite_members(suite_id, execution_order);
@@ -355,9 +350,9 @@ CREATE TABLE test_execution_runs (
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   
   request_id VARCHAR(100) UNIQUE,
-  requirement_id VARCHAR(50) REFERENCES requirements(id), -- business ID
-  version_id VARCHAR(50) REFERENCES versions(id),       -- business ID
-
+  requirement_id UUID REFERENCES requirements(req_uuid),
+  version_id UUID REFERENCES versions(ver_uuid),
+  
   suite_definition_id UUID REFERENCES test_suite_definitions(id),
   suite_name VARCHAR(255),
   suite_version VARCHAR(50),
@@ -396,7 +391,6 @@ CREATE INDEX idx_execution_runs_version ON test_execution_runs(version_id);
 CREATE INDEX idx_execution_runs_status ON test_execution_runs(status);
 CREATE INDEX idx_execution_runs_started ON test_execution_runs(started_at DESC);
 
-
 -- ============================================
 -- INDIVIDUAL TEST RESULTS
 -- ============================================
@@ -405,7 +399,7 @@ CREATE TABLE test_results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   execution_run_id UUID REFERENCES test_execution_runs(id) ON DELETE CASCADE,
-  test_case_id VARCHAR(50) NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE, -- business ID
+  test_case_id UUID NOT NULL REFERENCES test_cases(tc_uuid) ON DELETE CASCADE,
   
   status test_status NOT NULL,
   duration INTEGER,
@@ -514,7 +508,7 @@ CREATE INDEX idx_comments_created ON comments(created_at DESC);
 CREATE TABLE quality_gates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  version_id VARCHAR(50) REFERENCES versions(id), -- business ID
+  version_id UUID REFERENCES versions(ver_uuid),
   
   name VARCHAR(255) NOT NULL,
   description TEXT,

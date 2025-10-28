@@ -191,7 +191,7 @@ const createRequirement = async (req, res) => {
       minTestCases = null,
       tags = [],
       custom_fields = {},
-      versions = [] // ✅ ADD THIS
+      versions = []
     } = req.body;
 
     if (!id) {
@@ -208,7 +208,6 @@ const createRequirement = async (req, res) => {
       });
     }
 
-    // ✅ Use a transaction to create requirement and version mappings
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
@@ -228,15 +227,32 @@ const createRequirement = async (req, res) => {
         JSON.stringify(tags), JSON.stringify(custom_fields), req.user.id
       ]);
 
-      // ✅ Insert version mappings if provided
+      const newRequirement = result.rows[0];
+
+      // ✅ FIXED: Get the req_uuid that was auto-generated
+      const req_uuid = newRequirement.req_uuid;
+
+      // ✅ FIXED: Insert version mappings using UUIDs
       if (versions && Array.isArray(versions) && versions.length > 0) {
         for (const versionId of versions) {
           try {
-            await client.query(`
-              INSERT INTO requirement_versions (requirement_id, version_id)
-              VALUES ($1, $2)
-              ON CONFLICT (requirement_id, version_id) DO NOTHING
-            `, [id, versionId]);
+            // Get version UUID from business ID
+            const verUuidResult = await client.query(
+              'SELECT ver_uuid FROM versions WHERE id = $1',
+              [versionId]
+            );
+
+            if (verUuidResult.rows.length > 0) {
+              const ver_uuid = verUuidResult.rows[0].ver_uuid;
+
+              await client.query(`
+                INSERT INTO requirement_versions (requirement_id, version_id)
+                VALUES ($1, $2)
+                ON CONFLICT (requirement_id, version_id) DO NOTHING
+              `, [req_uuid, ver_uuid]);
+            } else {
+              console.warn(`Version ${versionId} not found, skipping mapping`);
+            }
           } catch (error) {
             console.warn(`Failed to link requirement ${id} to version ${versionId}:`, error.message);
           }
@@ -245,18 +261,19 @@ const createRequirement = async (req, res) => {
 
       await client.query('COMMIT');
 
-      // Fetch the complete requirement with versions
+      // Fetch the complete requirement with versions (using business IDs for display)
       const completeResult = await client.query(`
         SELECT 
           r.*,
           COALESCE(
             json_agg(
-              DISTINCT rv.version_id
-            ) FILTER (WHERE rv.version_id IS NOT NULL),
+              DISTINCT v.id
+            ) FILTER (WHERE v.id IS NOT NULL),
             '[]'
           ) as versions
         FROM requirements r
-        LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
+        LEFT JOIN requirement_versions rv ON r.req_uuid = rv.requirement_id
+        LEFT JOIN versions v ON rv.version_id = v.ver_uuid
         WHERE r.id = $1
         GROUP BY r.req_uuid
       `, [id]);

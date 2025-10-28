@@ -176,9 +176,9 @@ const getTestSuiteMembers = async (req, res) => {
           '[]'
         ) as applicable_versions
       FROM test_suite_members tsm
-      JOIN test_cases tc ON tsm.test_case_id = tc.id
       JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
       LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+      LEFT JOIN users u ON tsm.added_by = u.id
       WHERE tsm.suite_id = $1
       GROUP BY tc.tc_uuid, tsm.execution_order, tsm.is_mandatory, tsm.added_at, u.full_name
       ORDER BY tsm.execution_order ASC, tc.id ASC
@@ -198,6 +198,7 @@ const getTestSuiteMembers = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Create new test suite

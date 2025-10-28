@@ -101,7 +101,7 @@ CREATE TABLE versions (
   custom_fields JSONB DEFAULT '{}',
   
   -- Enforce global uniqueness of business ID
-  UNIQUE (id)
+  UNIQUE (id, workspace_id)
 );
 
 CREATE INDEX idx_versions_workspace ON versions(workspace_id);
@@ -163,7 +163,7 @@ CREATE TABLE requirements (
   custom_fields JSONB DEFAULT '{}',
   
   -- Enforce global uniqueness of business ID
-  UNIQUE (id)
+  UNIQUE (id, workspace_id)
 );
 
 CREATE INDEX idx_requirements_workspace ON requirements(workspace_id);
@@ -248,7 +248,7 @@ CREATE TABLE test_cases (
   custom_fields JSONB DEFAULT '{}',
   
   -- Enforce global uniqueness of business ID
-  UNIQUE (id)
+  UNIQUE (id, workspace_id)
 );
 
 CREATE INDEX idx_test_cases_workspace ON test_cases(workspace_id);

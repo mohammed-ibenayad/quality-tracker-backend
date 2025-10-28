@@ -11,7 +11,6 @@ const importData = async (req, res) => {
   try {
     const { requirements, testCases, versions, mappings, workspace_id } = req.body;
 
-    // Validate input
     if (!requirements && !testCases && !versions) {
       return res.status(400).json({
         success: false,
@@ -19,7 +18,6 @@ const importData = async (req, res) => {
       });
     }
 
-    // ✅ REQUIRE workspace_id
     if (!workspace_id) {
       return res.status(400).json({
         success: false,
@@ -27,7 +25,7 @@ const importData = async (req, res) => {
       });
     }
 
-    // ✅ Verify user has access to this workspace
+    // Verify user has access to this workspace
     const accessCheck = await db.query(`
       SELECT role FROM workspace_members
       WHERE workspace_id = $1 AND user_id = $2
@@ -40,7 +38,6 @@ const importData = async (req, res) => {
       });
     }
 
-    // ✅ Verify user has write permissions
     const userRole = accessCheck.rows[0].role;
     if (!['owner', 'admin', 'editor'].includes(userRole)) {
       return res.status(403).json({
@@ -55,39 +52,42 @@ const importData = async (req, res) => {
       requirements: { imported: 0, skipped: 0, errors: [] },
       testCases: { imported: 0, skipped: 0, errors: [] },
       versions: { imported: 0, skipped: 0, errors: [] },
-      mappings: { created: 0, errors: [] }
+      mappings: { imported: 0, skipped: 0, errors: [] }
     };
 
-    await db.transaction(async (client) => {
-      // 1. Import Versions First (if provided)
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Import Versions
       if (versions && Array.isArray(versions)) {
-        for (const version of versions) {
+        for (const ver of versions) {
           try {
             await client.query(`
               INSERT INTO versions (
-                id, workspace_id, name, description, status,
-                planned_release_date, actual_release_date, sort_order,
+                id, workspace_id, name, description, status, 
+                planned_release_date, actual_release_date, sort_order, 
                 is_default, release_notes, created_by
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               ON CONFLICT (id) DO NOTHING
             `, [
-              version.id,
-              workspace_id, // ✅ Always use provided workspace_id
-              version.name,
-              version.description || null,
-              version.status || 'Planning',
-              version.plannedReleaseDate || null,
-              version.actualReleaseDate || null,
-              version.sortOrder || 0,
-              version.isDefault || false,
-              version.releaseNotes || null,
+              ver.id,
+              workspace_id,
+              ver.name,
+              ver.description || '',
+              ver.status || 'Planned',
+              ver.planned_release_date || null,
+              ver.actual_release_date || null,
+              ver.sort_order || 0,
+              ver.is_default || false,
+              ver.release_notes || '',
               userId
             ]);
-            
+
             summary.versions.imported++;
           } catch (error) {
             summary.versions.skipped++;
-            summary.versions.errors.push(`Version ${version.id}: ${error.message}`);
+            summary.versions.errors.push(`Version ${ver.id}: ${error.message}`);
           }
         }
       }
@@ -96,7 +96,6 @@ const importData = async (req, res) => {
       if (requirements && Array.isArray(requirements)) {
         for (const req of requirements) {
           try {
-            // Normalize tags
             let tags = [];
             if (req.tags) {
               if (Array.isArray(req.tags)) {
@@ -106,11 +105,9 @@ const importData = async (req, res) => {
               }
             }
 
-            // Normalize values to match database ENUMs (Title Case)
             const normalizeEnumValue = (value, defaultValue) => {
               if (!value) return defaultValue;
-              // Capitalize first letter of each word
-              return value.split(/[\s-_]/).map(word => 
+              return value.split(/[\s-_]/).map(word =>
                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
               ).join(' ');
             };
@@ -122,30 +119,49 @@ const importData = async (req, res) => {
               ON CONFLICT (id) DO NOTHING
             `, [
               req.id,
-              workspace_id, // ✅ Always use provided workspace_id
+              workspace_id,
               req.name,
               req.description || '',
-              normalizeEnumValue(req.type, 'Functional'),     // ✅ FIXED: Normalize to Title Case
-              normalizeEnumValue(req.priority, 'Medium'),      // ✅ FIXED: Normalize to Title Case
-              normalizeEnumValue(req.status, 'Active'),        // ✅ FIXED: Normalize to Title Case
+              normalizeEnumValue(req.type, 'Functional'),
+              normalizeEnumValue(req.priority, 'Medium'),
+              normalizeEnumValue(req.status, 'Active'),
               JSON.stringify(tags),
               userId
             ]);
 
             summary.requirements.imported++;
 
-            // Import requirement-version mappings
+            // ✅ Import requirement-version mappings with UUID conversion
             if (req.versions && Array.isArray(req.versions)) {
-              for (const versionId of req.versions) {
-                try {
-                  await client.query(`
-                    INSERT INTO requirement_versions (requirement_id, version_id)
-                    VALUES ($1, $2)
-                    ON CONFLICT (requirement_id, version_id) DO NOTHING
-                  `, [req.id, versionId]);
-                } catch (error) {
-                  // Silently skip invalid version references
-                  console.warn(`Skipped version mapping for ${req.id} -> ${versionId}`);
+              // Get req_uuid
+              const reqUuidResult = await client.query(
+                'SELECT req_uuid FROM requirements WHERE id = $1',
+                [req.id]
+              );
+
+              if (reqUuidResult.rows.length > 0) {
+                const req_uuid = reqUuidResult.rows[0].req_uuid;
+
+                for (const versionId of req.versions) {
+                  try {
+                    // Get ver_uuid
+                    const verUuidResult = await client.query(
+                      'SELECT ver_uuid FROM versions WHERE id = $1',
+                      [versionId]
+                    );
+
+                    if (verUuidResult.rows.length > 0) {
+                      const ver_uuid = verUuidResult.rows[0].ver_uuid;
+
+                      await client.query(`
+                        INSERT INTO requirement_versions (requirement_id, version_id)
+                        VALUES ($1, $2)
+                        ON CONFLICT (requirement_id, version_id) DO NOTHING
+                      `, [req_uuid, ver_uuid]);
+                    }
+                  } catch (error) {
+                    console.warn(`Skipped version mapping for ${req.id} -> ${versionId}`);
+                  }
                 }
               }
             }
@@ -160,7 +176,6 @@ const importData = async (req, res) => {
       if (testCases && Array.isArray(testCases)) {
         for (const tc of testCases) {
           try {
-            // Normalize tags
             let tags = [];
             if (tc.tags) {
               if (Array.isArray(tc.tags)) {
@@ -170,7 +185,6 @@ const importData = async (req, res) => {
               }
             }
 
-            // Normalize steps
             let steps = [];
             if (tc.steps) {
               if (Array.isArray(tc.steps)) {
@@ -192,13 +206,13 @@ const importData = async (req, res) => {
               ON CONFLICT (id) DO NOTHING
             `, [
               tc.id,
-              workspace_id, // ✅ Always use provided workspace_id
+              workspace_id,
               tc.name,
               tc.description || '',
               tc.category || null,
               tc.priority || 'Medium',
               tc.status || 'Not Run',
-              tc.automation_status || tc.type || 'Manual', // ✅ Map old 'type' to 'automation_status'
+              tc.automation_status || tc.type || 'Manual',
               JSON.stringify(steps),
               tc.expectedResult || tc.expected_result || '',
               JSON.stringify(tags),
@@ -207,17 +221,37 @@ const importData = async (req, res) => {
 
             summary.testCases.imported++;
 
-            // Import test case-version mappings
+            // ✅ Import test case-version mappings with UUID conversion
             if (tc.applicableVersions && Array.isArray(tc.applicableVersions)) {
-              for (const versionId of tc.applicableVersions) {
-                try {
-                  await client.query(`
-                    INSERT INTO test_case_versions (test_case_id, version_id)
-                    VALUES ($1, $2)
-                    ON CONFLICT (test_case_id, version_id) DO NOTHING
-                  `, [tc.id, versionId]);
-                } catch (error) {
-                  console.warn(`Skipped version mapping for ${tc.id} -> ${versionId}`);
+              // Get tc_uuid
+              const tcUuidResult = await client.query(
+                'SELECT tc_uuid FROM test_cases WHERE id = $1',
+                [tc.id]
+              );
+
+              if (tcUuidResult.rows.length > 0) {
+                const tc_uuid = tcUuidResult.rows[0].tc_uuid;
+
+                for (const versionId of tc.applicableVersions) {
+                  try {
+                    // Get ver_uuid
+                    const verUuidResult = await client.query(
+                      'SELECT ver_uuid FROM versions WHERE id = $1',
+                      [versionId]
+                    );
+
+                    if (verUuidResult.rows.length > 0) {
+                      const ver_uuid = verUuidResult.rows[0].ver_uuid;
+
+                      await client.query(`
+                        INSERT INTO test_case_versions (test_case_id, version_id)
+                        VALUES ($1, $2)
+                        ON CONFLICT (test_case_id, version_id) DO NOTHING
+                      `, [tc_uuid, ver_uuid]);
+                    }
+                  } catch (error) {
+                    console.warn(`Skipped version mapping for ${tc.id} -> ${versionId}`);
+                  }
                 }
               }
             }
@@ -228,38 +262,42 @@ const importData = async (req, res) => {
         }
       }
 
-      // 4. Import Mappings (Requirement-TestCase relationships)
+      // 4. ✅ Import Mappings with UUID conversion
       if (mappings && typeof mappings === 'object') {
         for (const [requirementId, testCaseIds] of Object.entries(mappings)) {
           if (Array.isArray(testCaseIds)) {
-            for (const testCaseId of testCaseIds) {
-              try {
-                // ✅ Verify both IDs belong to the same workspace
-                const reqCheck = await client.query(
-                  'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
-                  [requirementId, workspace_id]
-                );
+            // Get req_uuid
+            const reqUuidResult = await client.query(
+              'SELECT req_uuid FROM requirements WHERE id = $1 AND workspace_id = $2',
+              [requirementId, workspace_id]
+            );
 
-                const tcCheck = await client.query(
-                  'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
-                  [testCaseId, workspace_id]
-                );
+            if (reqUuidResult.rows.length > 0) {
+              const req_uuid = reqUuidResult.rows[0].req_uuid;
 
-                if (reqCheck.rows.length > 0 && tcCheck.rows.length > 0) {
-                  await client.query(`
-                    INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (requirement_id, test_case_id) DO NOTHING
-                  `, [requirementId, testCaseId, userId]);
+              for (const testCaseId of testCaseIds) {
+                try {
+                  // Get tc_uuid
+                  const tcUuidResult = await client.query(
+                    'SELECT tc_uuid FROM test_cases WHERE id = $1 AND workspace_id = $2',
+                    [testCaseId, workspace_id]
+                  );
 
-                  summary.mappings.created++;
-                } else {
-                  console.warn(`Skipped mapping: ${requirementId} -> ${testCaseId} (not in workspace)`);
+                  if (tcUuidResult.rows.length > 0) {
+                    const tc_uuid = tcUuidResult.rows[0].tc_uuid;
+
+                    await client.query(`
+                      INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
+                      VALUES ($1, $2, $3)
+                      ON CONFLICT (requirement_id, test_case_id) DO NOTHING
+                    `, [req_uuid, tc_uuid, userId]);
+
+                    summary.mappings.imported++;
+                  }
+                } catch (error) {
+                  summary.mappings.skipped++;
+                  console.warn(`Skipped mapping: ${requirementId} -> ${testCaseId}`);
                 }
-              } catch (error) {
-                summary.mappings.errors.push(
-                  `Mapping ${requirementId}->${testCaseId}: ${error.message}`
-                );
               }
             }
           }
@@ -270,45 +308,57 @@ const importData = async (req, res) => {
       if (testCases && Array.isArray(testCases)) {
         for (const tc of testCases) {
           if (tc.requirementIds && Array.isArray(tc.requirementIds)) {
-            for (const reqId of tc.requirementIds) {
-              try {
-                // ✅ Verify both IDs belong to the same workspace
-                const reqCheck = await client.query(
-                  'SELECT id FROM requirements WHERE id = $1 AND workspace_id = $2',
-                  [reqId, workspace_id]
-                );
+            // Get tc_uuid
+            const tcUuidResult = await client.query(
+              'SELECT tc_uuid FROM test_cases WHERE id = $1 AND workspace_id = $2',
+              [tc.id, workspace_id]
+            );
 
-                const tcCheck = await client.query(
-                  'SELECT id FROM test_cases WHERE id = $1 AND workspace_id = $2',
-                  [tc.id, workspace_id]
-                );
+            if (tcUuidResult.rows.length > 0) {
+              const tc_uuid = tcUuidResult.rows[0].tc_uuid;
 
-                if (reqCheck.rows.length > 0 && tcCheck.rows.length > 0) {
-                  await client.query(`
-                    INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (requirement_id, test_case_id) DO NOTHING
-                  `, [reqId, tc.id, userId]);
+              for (const reqId of tc.requirementIds) {
+                try {
+                  // Get req_uuid
+                  const reqUuidResult = await client.query(
+                    'SELECT req_uuid FROM requirements WHERE id = $1 AND workspace_id = $2',
+                    [reqId, workspace_id]
+                  );
 
-                  summary.mappings.created++;
-                } else {
-                  console.warn(`Skipped mapping from testCase: ${reqId} -> ${tc.id} (not in workspace)`);
+                  if (reqUuidResult.rows.length > 0) {
+                    const req_uuid = reqUuidResult.rows[0].req_uuid;
+
+                    await client.query(`
+                      INSERT INTO requirement_test_mappings (requirement_id, test_case_id, created_by)
+                      VALUES ($1, $2, $3)
+                      ON CONFLICT (requirement_id, test_case_id) DO NOTHING
+                    `, [req_uuid, tc_uuid, userId]);
+
+                    summary.mappings.imported++;
+                  }
+                } catch (error) {
+                  summary.mappings.skipped++;
+                  console.warn(`Skipped mapping from testCase: ${reqId} -> ${tc.id}`);
                 }
-              } catch (error) {
-                // Silently skip duplicate mappings
-                console.warn(`Duplicate mapping skipped: ${reqId} -> ${tc.id}`);
               }
             }
           }
         }
       }
-    });
 
-    res.json({
-      success: true,
-      message: 'Import completed',
-      summary
-    });
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Import completed',
+        summary
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('Import error:', error);
     res.status(500).json({
@@ -318,6 +368,8 @@ const importData = async (req, res) => {
     });
   }
 };
+
+
 
 module.exports = {
   importData

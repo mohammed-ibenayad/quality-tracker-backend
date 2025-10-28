@@ -177,8 +177,8 @@ const getTestSuiteMembers = async (req, res) => {
         ) as applicable_versions
       FROM test_suite_members tsm
       JOIN test_cases tc ON tsm.test_case_id = tc.id
-      LEFT JOIN test_case_versions tcv ON tc.id = tcv.test_case_id
-      LEFT JOIN users u ON tsm.added_by = u.id
+      JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
+      LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
       WHERE tsm.suite_id = $1
       GROUP BY tc.tc_uuid, tsm.execution_order, tsm.is_mandatory, tsm.added_at, u.full_name
       ORDER BY tsm.execution_order ASC, tc.id ASC
@@ -241,10 +241,9 @@ const createTestSuite = async (req, res) => {
       suite_type,
       estimated_duration,
       recommended_environment,
-      test_case_ids = [] // Optional array of test case IDs to add initially
+      test_case_ids = []
     } = req.body;
 
-    // Validate required fields
     if (!name) {
       return res.status(400).json({
         success: false,
@@ -277,22 +276,28 @@ const createTestSuite = async (req, res) => {
 
       const newSuite = result.rows[0];
 
-      // Add test cases if provided
+      // ✅ Add test cases if provided - convert business IDs to UUIDs
       if (test_case_ids && Array.isArray(test_case_ids) && test_case_ids.length > 0) {
-        // Verify all test cases exist and belong to the workspace
+        // Get UUIDs for all test case business IDs
         const tcCheck = await client.query(`
-          SELECT id FROM test_cases
+          SELECT id, tc_uuid FROM test_cases
           WHERE id = ANY($1) AND workspace_id = $2
         `, [test_case_ids, workspaceId]);
 
-        const validTestCaseIds = tcCheck.rows.map(row => row.id);
+        const tcIdToUuidMap = {};
+        tcCheck.rows.forEach(row => {
+          tcIdToUuidMap[row.id] = row.tc_uuid;
+        });
 
-        // Add test cases to suite
-        for (let i = 0; i < validTestCaseIds.length; i++) {
-          await client.query(`
-            INSERT INTO test_suite_members (suite_id, test_case_id, execution_order, added_by)
-            VALUES ($1, $2, $3, $4)
-          `, [newSuite.id, validTestCaseIds[i], i, req.user.id]);
+        // Add test cases to suite using UUIDs
+        for (let i = 0; i < test_case_ids.length; i++) {
+          const tc_uuid = tcIdToUuidMap[test_case_ids[i]];
+          if (tc_uuid) {
+            await client.query(`
+              INSERT INTO test_suite_members (suite_id, test_case_id, execution_order, added_by)
+              VALUES ($1, $2, $3, $4)
+            `, [newSuite.id, tc_uuid, i, req.user.id]);
+          }
         }
       }
 
@@ -306,7 +311,7 @@ const createTestSuite = async (req, res) => {
           COUNT(CASE WHEN tc.automation_status = 'Automated' THEN 1 END) as automated_count
         FROM test_suite_definitions tsd
         LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
-        LEFT JOIN test_cases tc ON tsm.test_case_id = tc.id
+        LEFT JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
         WHERE tsd.id = $1
         GROUP BY tsd.id
       `, [newSuite.id]);
@@ -533,15 +538,18 @@ const addTestCasesToSuite = async (req, res) => {
         throw new Error('Test suite not found');
       }
 
-      // Verify all test cases exist and belong to workspace
+      // ✅ Verify all test cases exist and get their UUIDs
       const tcCheck = await client.query(`
-        SELECT id FROM test_cases
+        SELECT id, tc_uuid FROM test_cases
         WHERE id = ANY($1) AND workspace_id = $2
       `, [test_case_ids, workspaceId]);
 
-      const validTestCaseIds = tcCheck.rows.map(row => row.id);
+      const tcIdToUuidMap = {};
+      tcCheck.rows.forEach(row => {
+        tcIdToUuidMap[row.id] = row.tc_uuid;
+      });
 
-      if (validTestCaseIds.length === 0) {
+      if (Object.keys(tcIdToUuidMap).length === 0) {
         throw new Error('No valid test cases found');
       }
 
@@ -554,21 +562,26 @@ const addTestCasesToSuite = async (req, res) => {
 
       let currentOrder = maxOrderResult.rows[0].max_order + 1;
 
-      // Add test cases
+      // ✅ Add test cases using UUIDs
       const addedCount = { added: 0, skipped: 0 };
-      for (const testCaseId of validTestCaseIds) {
-        try {
-          await client.query(`
-            INSERT INTO test_suite_members (suite_id, test_case_id, execution_order, added_by)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (suite_id, test_case_id) DO NOTHING
-          `, [id, testCaseId, currentOrder, req.user.id]);
+      for (const testCaseId of test_case_ids) {
+        const tc_uuid = tcIdToUuidMap[testCaseId];
+        if (tc_uuid) {
+          try {
+            await client.query(`
+              INSERT INTO test_suite_members (suite_id, test_case_id, execution_order, added_by)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (suite_id, test_case_id) DO NOTHING
+            `, [id, tc_uuid, currentOrder, req.user.id]);
 
-          addedCount.added++;
-          currentOrder++;
-        } catch (error) {
+            addedCount.added++;
+            currentOrder++;
+          } catch (error) {
+            addedCount.skipped++;
+            console.warn(`Skipped test case ${testCaseId}:`, error.message);
+          }
+        } else {
           addedCount.skipped++;
-          console.warn(`Skipped test case ${testCaseId}:`, error.message);
         }
       }
 
@@ -645,12 +658,27 @@ const removeTestCaseFromSuite = async (req, res) => {
       });
     }
 
-    // Remove test case from suite
+    // ✅ Get tc_uuid from business ID
+    const tcUuidResult = await db.query(
+      'SELECT tc_uuid FROM test_cases WHERE id = $1 AND workspace_id = $2',
+      [testCaseId, workspaceId]
+    );
+
+    if (tcUuidResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test case not found'
+      });
+    }
+
+    const tc_uuid = tcUuidResult.rows[0].tc_uuid;
+
+    // ✅ Remove test case from suite using UUID
     const result = await db.query(`
       DELETE FROM test_suite_members
       WHERE suite_id = $1 AND test_case_id = $2
       RETURNING *
-    `, [id, testCaseId]);
+    `, [id, tc_uuid]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({

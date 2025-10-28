@@ -142,6 +142,7 @@ const getTestCaseById = async (req, res) => {
 /**
  * Create new test case
  */
+
 const createTestCase = async (req, res) => {
   try {
     const workspaceId = req.body.workspace_id;
@@ -325,6 +326,7 @@ const createTestCase = async (req, res) => {
 /**
  * Update test case
  */
+
 const updateTestCase = async (req, res) => {
   try {
     const { id } = req.params;
@@ -581,7 +583,6 @@ const updateTestCase = async (req, res) => {
     });
   }
 };
-
 /**
  * Delete test case
  */

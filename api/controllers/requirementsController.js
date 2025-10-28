@@ -525,6 +525,7 @@ const updateRequirement = async (req, res) => {
   }
 };
 
+
 /**
  * Delete requirement
  */

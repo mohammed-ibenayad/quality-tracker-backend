@@ -107,7 +107,7 @@ const importData = async (req, res) => {
 
             const normalizeEnumValue = (value, defaultValue) => {
               if (!value) return defaultValue;
-              return value.split(/[\s-_]/).map(word => 
+              return value.split(/[\s-_]/).map(word =>
                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
               ).join(' ');
             };
@@ -368,6 +368,8 @@ const importData = async (req, res) => {
     });
   }
 };
+
+
 
 module.exports = {
   importData

@@ -68,8 +68,8 @@ const getAllRequirements = async (req, res) => {
 };
 
 /**
- * Get single requirement by ID
- * ✅ FIXED: Includes versions array from requirement_versions junction table
+ * Get requirement by ID
+ * ✅ FIXED: Properly handles UUID conversion
  */
 const getRequirementById = async (req, res) => {
   try {
@@ -83,7 +83,7 @@ const getRequirementById = async (req, res) => {
       });
     }
 
-    // Verify user has access
+    // Verify user has access to this workspace
     const accessCheck = await db.query(`
       SELECT role FROM workspace_members
       WHERE workspace_id = $1 AND user_id = $2
@@ -96,25 +96,21 @@ const getRequirementById = async (req, res) => {
       });
     }
 
-    // ✅ FIXED: Join with BOTH requirement_versions AND requirement_test_mappings
+    // ✅ FIXED: Query using business ID (string), not UUID
+    // The 'id' field is the business identifier (e.g., 'REQ-001')
+    // The 'req_uuid' field is the internal UUID
     const result = await db.query(`
       SELECT 
         r.*,
         COALESCE(
           json_agg(
-            DISTINCT rv.version_id
-          ) FILTER (WHERE rv.version_id IS NOT NULL),
+            DISTINCT v.id
+          ) FILTER (WHERE v.id IS NOT NULL),
           '[]'
-        ) as versions,
-        COALESCE(
-          json_agg(
-            DISTINCT rtm.test_case_id
-          ) FILTER (WHERE rtm.test_case_id IS NOT NULL),
-          '[]'
-        ) as test_case_ids
+        ) as versions
       FROM requirements r
-      LEFT JOIN requirement_versions rv ON r.id = rv.requirement_id
-      LEFT JOIN requirement_test_mappings rtm ON r.id = rtm.requirement_id
+      LEFT JOIN requirement_versions rv ON r.req_uuid = rv.requirement_id
+      LEFT JOIN versions v ON rv.version_id = v.ver_uuid
       WHERE r.id = $1 AND r.workspace_id = $2
       GROUP BY r.req_uuid
     `, [id, workspaceId]);
@@ -139,6 +135,7 @@ const getRequirementById = async (req, res) => {
     });
   }
 };
+
 
 
 /**

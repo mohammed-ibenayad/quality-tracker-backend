@@ -30,27 +30,29 @@ const getAllTestCases = async (req, res) => {
     }
 
     const result = await db.query(`
-      SELECT 
-        tc.*,
-        COALESCE(
-          json_agg(
-            DISTINCT tcv.version_id
-          ) FILTER (WHERE tcv.version_id IS NOT NULL),
-          '[]'
-        ) as applicable_versions,
-        COALESCE(
-          json_agg(
-            DISTINCT rtm.requirement_id
-          ) FILTER (WHERE rtm.requirement_id IS NOT NULL),
-          '[]'
-        ) as requirement_ids
-      FROM test_cases tc
-      LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
-      LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
-      WHERE tc.workspace_id = $1
-      GROUP BY tc.tc_uuid
-      ORDER BY tc.created_at DESC
-    `, [workspaceId]);
+  SELECT 
+    tc.*,
+    COALESCE(
+      json_agg(
+        DISTINCT v.id  -- ✅ CORRECT - returns business ID like "v1.0"
+      ) FILTER (WHERE v.id IS NOT NULL),
+      '[]'
+    ) as applicable_versions,
+    COALESCE(
+      json_agg(
+        DISTINCT r.id  -- ✅ CORRECT - returns business ID like "REQ-001"
+      ) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) as requirement_ids
+  FROM test_cases tc
+  LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+  LEFT JOIN versions v ON tcv.version_id = v.ver_uuid  -- ✅ ADD THIS JOIN
+  LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
+  LEFT JOIN requirements r ON rtm.requirement_id = r.req_uuid  -- ✅ ADD THIS JOIN
+  WHERE tc.workspace_id = $1
+  GROUP BY tc.tc_uuid
+  ORDER BY tc.created_at DESC
+`, [workspaceId]);
 
     res.json({
       success: true,
@@ -97,26 +99,28 @@ const getTestCaseById = async (req, res) => {
     }
 
     const result = await db.query(`
-      SELECT 
-        tc.*,
-        COALESCE(
-          json_agg(
-            DISTINCT tcv.version_id
-          ) FILTER (WHERE tcv.version_id IS NOT NULL),
-          '[]'
-        ) as applicable_versions,
-        COALESCE(
-          json_agg(
-            DISTINCT rtm.requirement_id
-          ) FILTER (WHERE rtm.requirement_id IS NOT NULL),
-          '[]'
-        ) as requirement_ids
-      FROM test_cases tc
-      LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
-      LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
-      WHERE tc.id = $1 AND tc.workspace_id = $2
-      GROUP BY tc.tc_uuid
-    `, [id, workspaceId]);
+  SELECT 
+    tc.*,
+    COALESCE(
+      json_agg(
+        DISTINCT v.id  -- ✅ CORRECT - returns business ID like "v1.0"
+      ) FILTER (WHERE v.id IS NOT NULL),
+      '[]'
+    ) as applicable_versions,
+    COALESCE(
+      json_agg(
+        DISTINCT r.id  -- ✅ CORRECT - returns business ID like "REQ-001"
+      ) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) as requirement_ids
+  FROM test_cases tc
+  LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+  LEFT JOIN versions v ON tcv.version_id = v.ver_uuid  -- ✅ ADD THIS JOIN
+  LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
+  LEFT JOIN requirements r ON rtm.requirement_id = r.req_uuid  -- ✅ ADD THIS JOIN
+  WHERE tc.id = $1 AND tc.workspace_id = $2
+  GROUP BY tc.tc_uuid
+`, [id, workspaceId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -280,26 +284,28 @@ const createTestCase = async (req, res) => {
 
       // Fetch the complete test case with mappings
       const completeResult = await client.query(`
-        SELECT 
-          tc.*,
-          COALESCE(
-            json_agg(
-              DISTINCT tcv.version_id
-            ) FILTER (WHERE tcv.version_id IS NOT NULL),
-            '[]'
-          ) as applicable_versions,
-          COALESCE(
-            json_agg(
-              DISTINCT rtm.requirement_id
-            ) FILTER (WHERE rtm.requirement_id IS NOT NULL),
-            '[]'
-          ) as requirement_ids
-        FROM test_cases tc
-        LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
-        LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
-        WHERE tc.id = $1
-        GROUP BY tc.tc_uuid
-      `, [id]);
+  SELECT 
+    tc.*,
+    COALESCE(
+      json_agg(
+        DISTINCT v.id  -- ✅ CORRECT
+      ) FILTER (WHERE v.id IS NOT NULL),
+      '[]'
+    ) as applicable_versions,
+    COALESCE(
+      json_agg(
+        DISTINCT r.id  -- ✅ CORRECT
+      ) FILTER (WHERE r.id IS NOT NULL),
+      '[]'
+    ) as requirement_ids
+  FROM test_cases tc
+  LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+  LEFT JOIN versions v ON tcv.version_id = v.ver_uuid  -- ✅ ADD THIS JOIN
+  LEFT JOIN requirement_test_mappings rtm ON tc.tc_uuid = rtm.test_case_id
+  LEFT JOIN requirements r ON rtm.requirement_id = r.req_uuid  -- ✅ ADD THIS JOIN
+  WHERE tc.id = $1
+  GROUP BY tc.tc_uuid
+`, [id]);
 
       res.status(201).json({
         success: true,

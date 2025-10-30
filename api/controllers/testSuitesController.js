@@ -163,26 +163,27 @@ const getTestSuiteMembers = async (req, res) => {
     }
 
     const result = await db.query(`
-      SELECT 
-        tc.*,
-        tsm.execution_order,
-        tsm.is_mandatory,
-        tsm.added_at,
-        u.full_name as added_by_name,
-        COALESCE(
-          json_agg(
-            DISTINCT tcv.version_id
-          ) FILTER (WHERE tcv.version_id IS NOT NULL),
-          '[]'
-        ) as applicable_versions
-      FROM test_suite_members tsm
-      JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
-      LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
-      LEFT JOIN users u ON tsm.added_by = u.id
-      WHERE tsm.suite_id = $1
-      GROUP BY tc.tc_uuid, tsm.execution_order, tsm.is_mandatory, tsm.added_at, u.full_name
-      ORDER BY tsm.execution_order ASC, tc.id ASC
-    `, [id]);
+  SELECT 
+    tc.*,
+    tsm.execution_order,
+    tsm.is_mandatory,
+    tsm.added_at,
+    u.full_name as added_by_name,
+    COALESCE(
+      json_agg(
+        DISTINCT v.id  -- ✅ CORRECT - returns business ID like "v1.0"
+      ) FILTER (WHERE v.id IS NOT NULL),
+      '[]'
+    ) as applicable_versions
+  FROM test_suite_members tsm
+  JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
+  LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+  LEFT JOIN versions v ON tcv.version_id = v.ver_uuid  -- ✅ ADD THIS JOIN
+  LEFT JOIN users u ON tsm.added_by = u.id
+  WHERE tsm.suite_id = $1
+  GROUP BY tc.tc_uuid, tsm.execution_order, tsm.is_mandatory, tsm.added_at, u.full_name
+  ORDER BY tsm.execution_order ASC, tc.id ASC
+`, [id]);
 
     res.json({
       success: true,

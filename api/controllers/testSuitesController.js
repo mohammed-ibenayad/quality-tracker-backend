@@ -29,19 +29,19 @@ const getAllTestSuites = async (req, res) => {
 
     // Get test suites with member count
     const result = await db.query(`
-      SELECT 
-        tsd.*,
-        COUNT(tsm.test_case_id) as test_count,
-        COUNT(CASE WHEN tc.automation_status = 'Automated' THEN 1 END) as automated_count,
-        u.full_name as created_by_name
-      FROM test_suite_definitions tsd
-      LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
-      LEFT JOIN test_cases tc ON tsm.test_case_id = tc.id
-      LEFT JOIN users u ON tsd.created_by = u.id
-      WHERE tsd.workspace_id = $1 AND tsd.is_active = true
-      GROUP BY tsd.id, u.full_name
-      ORDER BY tsd.created_at DESC
-    `, [workspaceId]);
+  SELECT 
+    tsd.*,
+    COUNT(tsm.test_case_id) as test_count,
+    COUNT(CASE WHEN tc.automation_status = 'Automated' THEN 1 END) as automated_count,
+    u.full_name as created_by_name
+  FROM test_suite_definitions tsd
+  LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
+  LEFT JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
+  LEFT JOIN users u ON tsd.created_by = u.id
+  WHERE tsd.workspace_id = $1 AND tsd.is_active = true
+  GROUP BY tsd.id, u.full_name
+  ORDER BY tsd.created_at DESC
+`, [workspaceId]);
 
     res.json({
       success: true,
@@ -94,7 +94,7 @@ const getTestSuiteById = async (req, res) => {
         u.full_name as created_by_name
       FROM test_suite_definitions tsd
       LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
-      LEFT JOIN test_cases tc ON tsm.test_case_id = tc.id
+      LEFT JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
       LEFT JOIN users u ON tsd.created_by = u.id
       WHERE tsd.id = $1 AND tsd.workspace_id = $2
       GROUP BY tsd.id, u.full_name
@@ -176,9 +176,9 @@ const getTestSuiteMembers = async (req, res) => {
           '[]'
         ) as applicable_versions
       FROM test_suite_members tsm
-      JOIN test_cases tc ON tsm.test_case_id = tc.id
       JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
       LEFT JOIN test_case_versions tcv ON tc.tc_uuid = tcv.test_case_id
+      LEFT JOIN users u ON tsm.added_by = u.id
       WHERE tsm.suite_id = $1
       GROUP BY tc.tc_uuid, tsm.execution_order, tsm.is_mandatory, tsm.added_at, u.full_name
       ORDER BY tsm.execution_order ASC, tc.id ASC
@@ -198,6 +198,7 @@ const getTestSuiteMembers = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Create new test suite
@@ -461,7 +462,7 @@ const updateTestSuite = async (req, res) => {
         COUNT(CASE WHEN tc.automation_status = 'Automated' THEN 1 END) as automated_count
       FROM test_suite_definitions tsd
       LEFT JOIN test_suite_members tsm ON tsd.id = tsm.suite_id
-      LEFT JOIN test_cases tc ON tsm.test_case_id = tc.id
+      LEFT JOIN test_cases tc ON tsm.test_case_id = tc.tc_uuid
       WHERE tsd.id = $1
       GROUP BY tsd.id
     `, [id]);
